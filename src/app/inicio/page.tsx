@@ -1,83 +1,205 @@
+"use client";
+
 import Link from "next/link";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 
-const cards = [
-  {
-    href: "/registro",
-    icon: "📝",
-    title: "Registro de atletas",
-    desc: "Alta de competidores, peso corporal, club y categoría automática.",
-  },
-  {
-    href: "/competencia",
-    icon: "🏋️",
-    title: "Competencia",
-    desc: "Control de intentos, luces de jueces y temporizador de 60 segundos.",
-  },
-  {
-    href: "/marcador",
-    icon: "📺",
-    title: "Marcador en vivo",
-    desc: "Vista pública para pantalla, TV o transmisión.",
-  },
-  {
-    href: "/resultados",
-    icon: "🏆",
-    title: "Resultados",
-    desc: "Ranking por categoría con total de sentadilla, banca y peso muerto.",
-  },
-];
-
-export default function InicioPage() {
+function SplashScreen() {
   return (
-    <main className="min-h-screen bg-black text-white px-6 py-12">
-      <section className="mx-auto flex min-h-screen w-full max-w-7xl flex-col items-center justify-center">
-        <img
-          src="/logo.png"
-          alt="PowerLift Tlalmanalco"
-          className="mb-8 w-[170px] md:w-[220px]"
-        />
+    <div className="powerlift-splash">
+      <div className="powerlift-splash-noise" />
+      <div className="powerlift-splash-rays" />
+      <div className="powerlift-splash-content">
+        <div className="powerlift-splash-logo-wrap">
+          <div className="powerlift-splash-ring powerlift-splash-ring-1" />
+          <div className="powerlift-splash-ring powerlift-splash-ring-2" />
+          <Image
+            src="/jaguar-logo.png"
+            alt="Powerlift"
+            width={240}
+            height={240}
+            className="powerlift-splash-logo"
+            priority
+          />
+        </div>
 
-        <p className="mb-6 text-center text-sm tracking-[0.35em] text-cyan-400">
-          POWERLIFTING CLÁSICO
-        </p>
+        <p className="powerlift-splash-kicker">COMPETENCIA OFICIAL</p>
 
-        <h1 className="mb-8 text-center text-4xl font-black leading-none tracking-tight md:text-7xl">
-          <span
-            style={{
-              color: "#7fd3ff",
-              textShadow:
-                "0 1px 0 rgba(255,255,255,0.25), 0 0 12px rgba(0,140,255,0.18), 0 3px 12px rgba(0,0,0,0.7)",
-            }}
-          >
-            PowerLift Tlalmanalco Score
-          </span>
+        <h1 className="powerlift-splash-title">
+          POWERLIFT
+          <span>TLALMANALCO</span>
         </h1>
 
-        <p className="max-w-3xl text-center text-white/70 md:text-xl">
-          Sistema de registro, control de intentos, luces de jueces,
-          marcador en vivo y resultados para competencias de powerlifting.
+        <p className="powerlift-splash-subtitle">
+          Sistema profesional de competencia
         </p>
 
-        <div className="mt-14 grid w-full max-w-6xl grid-cols-1 gap-8 md:grid-cols-2">
-          {cards.map((card) => (
-            <Link key={card.href} href={card.href} className="relative group">
-              <div className="absolute -inset-[1px] rounded-3xl bg-gradient-to-r from-cyan-500/40 to-blue-700/40 blur-lg opacity-50 transition duration-300 group-hover:opacity-80" />
-
-              <div className="relative rounded-3xl border border-cyan-400/20 bg-zinc-950 p-8 transition duration-300 group-hover:-translate-y-1 group-hover:border-cyan-300/50">
-                <div className="mb-4 text-3xl">{card.icon}</div>
-
-                <h2 className="text-2xl font-bold text-white md:text-3xl">
-                  {card.title}
-                </h2>
-
-                <p className="mt-3 text-base text-white/70 md:text-lg">
-                  {card.desc}
-                </p>
-              </div>
-            </Link>
-          ))}
+        <div className="powerlift-splash-loader">
+          <span />
         </div>
-      </section>
-    </main>
+      </div>
+    </div>
+  );
+}
+
+export default function InicioPage() {
+  const [showSplash, setShowSplash] = useState(true);
+  const [hideSplash, setHideSplash] = useState(false);
+  const timersRef = useRef<number[]>([]);
+
+  const clearAllTimers = () => {
+    timersRef.current.forEach((timer) => window.clearTimeout(timer));
+    timersRef.current = [];
+  };
+
+  const triggerSplash = () => {
+    clearAllTimers();
+    setShowSplash(true);
+    setHideSplash(false);
+
+    timersRef.current.push(
+      window.setTimeout(() => {
+        setHideSplash(true);
+      }, 2600)
+    );
+
+    timersRef.current.push(
+      window.setTimeout(() => {
+        setShowSplash(false);
+      }, 3400)
+    );
+  };
+
+  useEffect(() => {
+    triggerSplash();
+
+    return () => {
+      clearAllTimers();
+    };
+  }, []);
+
+  const stats = {
+    atletas: 12,
+    masculino: 9,
+    femenino: 3,
+    categorias: 8,
+  };
+
+  const modules = [
+    {
+      label: "ATLETAS",
+      title: "Registro",
+      desc: "Alta de atletas y categoría automática",
+      href: "/registro",
+    },
+    {
+      label: "CONTROL",
+      title: "Competencia",
+      desc: "Mesa oficial para gestionar intentos",
+      href: "/competencia",
+    },
+    {
+      label: "BROADCAST",
+      title: "Marcador",
+      desc: "Pantalla en vivo para TV o proyección",
+      href: "/marcador",
+    },
+    {
+      label: "RANKING",
+      title: "Resultados",
+      desc: "Clasificación general del campeonato",
+      href: "/resultados",
+    },
+  ];
+
+  return (
+    <>
+      <button className="powerlift-home-btn" onClick={triggerSplash}>
+        INICIO
+      </button>
+
+      <div
+        className={`powerlift-home-stage ${
+          showSplash ? "powerlift-home-stage--loading" : "powerlift-home-stage--ready"
+        }`}
+      >
+        <main className="powerlift-shell">
+          <div className="powerlift-bg-orb orb-1" />
+          <div className="powerlift-bg-orb orb-2" />
+          <div className="powerlift-grid-lines" />
+
+          <div className="powerlift-container">
+            <section className="powerlift-hero">
+              <div className="powerlift-hero-glow" />
+
+              <div className="powerlift-brand">
+                <div className="powerlift-logo-wrap">
+                  <div className="powerlift-logo-ring" />
+                  <Image
+                    src="/jaguar-logo.png"
+                    alt="Powerlift Tlalmanalco"
+                    width={180}
+                    height={180}
+                    className="powerlift-logo"
+                    priority
+                  />
+                </div>
+
+                <div className="powerlift-copy">
+                  <p className="powerlift-kicker">POWERLIFTING</p>
+                  <h1 className="powerlift-title">Powerlifting Score</h1>
+                  <p className="powerlift-subtitle">
+                    TLALMANALCO · Championship Control Interface
+                  </p>
+                </div>
+              </div>
+
+              <div className="powerlift-grid">
+                {modules.map((item) => (
+                  <article key={item.href} className="powerlift-card">
+                    <div className="powerlift-card-glow" />
+                    <div className="powerlift-label">{item.label}</div>
+                    <h3>{item.title}</h3>
+                    <p>{item.desc}</p>
+
+                    <Link href={item.href} className="powerlift-button">
+                      Abrir módulo <span>→</span>
+                    </Link>
+                  </article>
+                ))}
+              </div>
+
+              <div className="powerlift-stats">
+                <div className="powerlift-stat">
+                  <span>Atletas registrados</span>
+                  <strong>{stats.atletas}</strong>
+                </div>
+
+                <div className="powerlift-stat">
+                  <span>Masculino</span>
+                  <strong>{stats.masculino}</strong>
+                </div>
+
+                <div className="powerlift-stat">
+                  <span>Femenino</span>
+                  <strong>{stats.femenino}</strong>
+                </div>
+
+                <div className="powerlift-stat">
+                  <span>Categorías</span>
+                  <strong>{stats.categorias}</strong>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+
+      {showSplash && (
+        <div className={hideSplash ? "powerlift-splash-out" : ""}>
+          <SplashScreen />
+        </div>
+      )}
+    </>
   );
 }

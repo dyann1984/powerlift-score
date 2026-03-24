@@ -1,71 +1,138 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import "./globals.css";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 
-export default function SplashPage() {
-  const router = useRouter();
+function SplashScreen() {
+  return (
+    <div className="powerlift-splash">
+      <div className="powerlift-splash-overlay" />
+      <div className="powerlift-splash-content">
+        <Image
+          src="/jaguar-logo.png"
+          alt="Powerlift"
+          width={240}
+          height={240}
+          className="powerlift-splash-logo"
+          priority
+        />
+        <p className="powerlift-splash-kicker">COMPETENCIA</p>
+        <h1 className="powerlift-splash-title">POWERLIFT TLALMANALCO</h1>
+        <p className="powerlift-splash-subtitle">
+          Sistema profesional de competencia
+        </p>
+
+        <div className="powerlift-splash-loader">
+          <span />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HomeContent() {
+  return (
+    <main className="powerlift-home">
+      <div className="powerlift-shell">
+        <div className="powerlift-container">
+          <section className="powerlift-hero">
+            <div className="powerlift-brand">
+              <div className="powerlift-logo-wrap">
+                <Image
+                  src="/jaguar-logo.png"
+                  alt="Powerlift"
+                  width={150}
+                  height={150}
+                  className="powerlift-logo"
+                  priority
+                />
+              </div>
+
+              <div>
+                <p className="powerlift-kicker">COMPETENCIA</p>
+                <h1 className="powerlift-title">POWERLIFT TLALMANALCO</h1>
+                <p className="powerlift-subtitle">
+                  Sistema profesional de competencia
+                </p>
+              </div>
+            </div>
+
+            <div className="powerlift-grid">
+              <article className="powerlift-card">
+                <span className="powerlift-label">Registro</span>
+                <h3>Atletas</h3>
+                <p>Alta de competidores</p>
+                <Link href="/registro" className="powerlift-button">
+                  Entrar
+                </Link>
+              </article>
+
+              <article className="powerlift-card">
+                <span className="powerlift-label">Competencia</span>
+                <h3>Jueces</h3>
+                <p>Panel de calificación</p>
+                <Link href="/jueces" className="powerlift-button">
+                  Entrar
+                </Link>
+              </article>
+
+              <article className="powerlift-card">
+                <span className="powerlift-label">Resultados</span>
+                <h3>Ranking</h3>
+                <p>Tabla general</p>
+                <Link href="/resultados" className="powerlift-button">
+                  Entrar
+                </Link>
+              </article>
+
+              <article className="powerlift-card">
+                <span className="powerlift-label">Control</span>
+                <h3>Admin</h3>
+                <p>Gestión del evento</p>
+                <Link href="/admin" className="powerlift-button">
+                  Entrar
+                </Link>
+              </article>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export default function Home() {
+  const [showSplash, setShowSplash] = useState(true);
+  const [hideSplash, setHideSplash] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      router.push("/inicio");
+    const timer1 = setTimeout(() => {
+      setHideSplash(true);
     }, 2600);
 
-    return () => clearTimeout(timer);
-  }, [router]);
+    const timer2 = setTimeout(() => {
+      setShowSplash(false);
+    }, 3200);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, []);
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,170,255,0.16),transparent_45%)]" />
-      <div className="absolute h-[320px] w-[320px] rounded-full bg-cyan-500/10 blur-3xl animate-pulse" />
+    <>
+      <div className={`powerlift-page ${showSplash ? "is-loading" : "is-ready"}`}>
+        <HomeContent />
+      </div>
 
-      <section className="relative z-10 flex flex-col items-center px-6 text-center">
-        <img
-          src="/logo.png"
-          alt="PowerLift Tlalmanalco"
-          className="w-[180px] md:w-[240px] animate-[pulse_2s_ease-in-out_infinite]"
-        />
-
-        <p className="mt-6 text-sm tracking-[0.35em] text-cyan-400">
-          POWERLIFTING CLÁSICO
-        </p>
-
-        <h1
-          className="mt-5 text-4xl font-black leading-none md:text-6xl"
-          style={{
-            color: "#7fd3ff",
-            textShadow:
-              "0 1px 0 rgba(255,255,255,0.2), 0 0 12px rgba(0,140,255,0.18), 0 3px 12px rgba(0,0,0,0.7)",
-          }}
-        >
-          PowerLift Tlalmanalco Score
-        </h1>
-
-        <p className="mt-4 text-base text-white/70 md:text-lg">
-          Cargando sistema...
-        </p>
-
-        <div className="mt-7 flex items-center gap-3">
-          <span className="h-3 w-3 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.3s]" />
-          <span className="h-3 w-3 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.15s]" />
-          <span className="h-3 w-3 rounded-full bg-cyan-400 animate-bounce" />
+      {showSplash && (
+        <div className={hideSplash ? "powerlift-splash-out" : ""}>
+          <SplashScreen />
         </div>
-
-        <div className="mt-8 h-2 w-64 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full w-full origin-left rounded-full bg-gradient-to-r from-cyan-400 to-blue-600 animate-[growBar_2.3s_ease-out_forwards]" />
-        </div>
-      </section>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            @keyframes growBar {
-              from { transform: scaleX(0); }
-              to { transform: scaleX(1); }
-            }
-          `,
-        }}
-      />
-    </main>
+      )}
+    </>
   );
 }

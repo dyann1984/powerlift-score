@@ -1,0 +1,501 @@
+.jueces-page {
+  position: relative;
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.58), rgba(0, 0, 0, 0.72)),
+    url("/fondo.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+.jueces-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(212, 175, 55, 0.1), transparent 28%),
+    radial-gradient(circle at 82% 22%, rgba(255, 170, 0, 0.08), transparent 26%);
+}
+
+.jueces-shell {
+  position: relative;
+  z-index: 1;
+  width: min(1500px, 100%);
+  margin: 0 auto;
+}
+
+.jueces-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+
+.jueces-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.jueces-logo-box {
+  width: 86px;
+  height: 86px;
+  border-radius: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  background: linear-gradient(180deg, rgba(10, 10, 10, 0.9), rgba(0, 0, 0, 0.82));
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.4),
+    0 0 26px rgba(212, 175, 55, 0.08);
+}
+
+.jueces-logo {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+}
+
+.jueces-kicker {
+  margin: 0 0 6px;
+  color: #f4d06f;
+  letter-spacing: 0.24em;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.jueces-title {
+  margin: 0;
+  font-size: clamp(32px, 4vw, 58px);
+  line-height: 0.95;
+  font-weight: 950;
+  background: linear-gradient(180deg, #fff6d8 0%, #f6d56e 40%, #d4af37 75%, #8d6a17 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.jueces-subtitle {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 15px;
+}
+
+.jueces-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 14px;
+  text-decoration: none;
+  color: #fff;
+  font-weight: 800;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  background: rgba(8, 8, 8, 0.68);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+}
+
+.jueces-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 22px;
+  align-items: start;
+}
+
+.j-side-stack {
+  display: grid;
+  gap: 22px;
+}
+
+.j-card {
+  position: relative;
+  border-radius: 28px;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  background: linear-gradient(180deg, rgba(6, 6, 6, 0.76), rgba(4, 4, 4, 0.7));
+  backdrop-filter: blur(14px);
+  box-shadow:
+    0 24px 55px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  padding: 22px;
+  overflow: hidden;
+}
+
+.j-main-card {
+  box-shadow:
+    0 40px 100px rgba(0, 0, 0, 0.7),
+    0 0 40px rgba(212, 175, 55, 0.08);
+}
+
+.j-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.05), transparent 25%, transparent 75%, rgba(212, 175, 55, 0.03));
+}
+
+.j-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.j-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  color: #f4d06f;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.j-atleta-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.j-atleta-head h2 {
+  margin: 0;
+  font-size: clamp(34px, 3vw, 54px);
+  line-height: 0.95;
+  color: #fff;
+  font-weight: 950;
+}
+
+.j-atleta-head p {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 15px;
+}
+
+.j-peso-box {
+  min-width: 170px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.j-peso-box span {
+  display: block;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.j-peso-box strong {
+  font-size: 34px;
+  color: #f4d06f;
+}
+
+.j-atleta-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.j-meta-pill {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+}
+
+.j-meta-pill span {
+  display: block;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.j-meta-pill strong {
+  color: #fff;
+  font-size: 20px;
+}
+
+.estado-ok {
+  color: #86ffb0 !important;
+  text-shadow: 0 0 10px rgba(134, 255, 176, 0.4);
+}
+
+.estado-bad {
+  color: #ff7a7a !important;
+  text-shadow: 0 0 10px rgba(255, 80, 80, 0.4);
+}
+
+.estado-pending {
+  color: #f4d06f !important;
+  text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
+}
+
+.j-judges-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.judge-card {
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+}
+
+.judge-card span {
+  display: block;
+  color: #fff;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.judge-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.judge-btn {
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 900;
+  transition: 0.2s ease;
+  border: none;
+}
+
+.judge-btn.white {
+  background: linear-gradient(180deg, #ffffff, #dcdcdc);
+  color: #111;
+}
+
+.judge-btn.red {
+  background: linear-gradient(180deg, #ff6b6b, #d64040);
+  color: #fff;
+}
+
+.judge-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+}
+
+.judge-btn.active.white {
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.2),
+    0 0 20px rgba(255, 255, 255, 0.4);
+}
+
+.judge-btn.active.red {
+  box-shadow:
+    0 0 0 3px rgba(255, 0, 0, 0.2),
+    0 0 20px rgba(255, 0, 0, 0.5);
+}
+
+.lights-panel {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.light {
+  height: 70px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.25s ease;
+}
+
+.light.on.light-white {
+  background: radial-gradient(circle, #ffffff 0%, #dcdcdc 60%, #9f9f9f 100%);
+  box-shadow:
+    0 0 18px rgba(255, 255, 255, 0.6),
+    0 0 45px rgba(255, 255, 255, 0.35);
+}
+
+.light.on.light-red {
+  background: radial-gradient(circle, #ff9b9b 0%, #ff3b3b 60%, #a80000 100%);
+  box-shadow:
+    0 0 20px rgba(255, 0, 0, 0.6),
+    0 0 50px rgba(255, 0, 0, 0.35);
+}
+
+.j-main-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.j-action {
+  min-height: 52px;
+  padding: 0 20px;
+  border-radius: 15px;
+  border: none;
+  cursor: pointer;
+  font-weight: 900;
+  transition: 0.2s ease;
+}
+
+.j-action:hover {
+  transform: translateY(-2px);
+}
+
+.j-action.primary {
+  background: linear-gradient(180deg, #f4d06f 0%, #d4af37 65%, #a77712 100%);
+  color: #111;
+}
+
+.j-action.secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.side-title {
+  margin: 0 0 16px;
+  font-size: 28px;
+  color: #fff;
+  font-weight: 900;
+}
+
+.queue-list,
+.history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.queue-item,
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+.queue-item strong,
+.history-item strong {
+  display: block;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.queue-item p,
+.history-item p,
+.muted-text {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+}
+
+.queue-item span,
+.history-item span {
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.ok {
+  color: #86ffb0;
+}
+
+.bad {
+  color: #ff8c8c;
+}
+
+.j-empty {
+  padding: 30px 0 10px;
+}
+
+.j-empty h2 {
+  margin: 0 0 10px;
+  font-size: 38px;
+  color: #fff;
+}
+
+.j-empty p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+@media (max-width: 1180px) {
+  .jueces-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .j-side-stack {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .j-atleta-meta,
+  .j-judges-row {
+    grid-template-columns: 1fr;
+  }
+
+  .lights-panel {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .jueces-page {
+    padding: 14px 10px;
+  }
+
+  .jueces-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .jueces-brand {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .j-side-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .j-atleta-head {
+    align-items: flex-start;
+  }
+
+  .j-atleta-head h2 {
+    font-size: 34px;
+  }
+
+  .lights-panel {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .j-main-actions {
+    flex-direction: column;
+  }
+
+  .j-action {
+    width: 100%;
+  }
+}

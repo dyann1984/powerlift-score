@@ -1,581 +1,356 @@
 "use client";
 
+import "./registro.css";
+import Image from "next/image";
 import Link from "next/link";
-import React, { ChangeEvent, useEffect, useMemo, useState } from "react";
-
-type Sexo = "Varonil" | "Femenil" | "";
+import { useMemo, useRef, useState } from "react";
 
 type Atleta = {
-  id: string;
+  id: number;
   nombre: string;
-  club: string;
-  edad: number;
-  sexo: Sexo;
-  peso: number;
+  sexo: string;
+  peso: string;
   categoria: string;
+  club: string;
   foto?: string;
-  createdAt?: string;
 };
 
-const ATHLETES_KEY = "powerlift_atletas";
+const atletasIniciales: Atleta[] = [
+  {
+    id: 1,
+    nombre: "Juan García",
+    sexo: "Masculino",
+    peso: "83",
+    categoria: "83 kg",
+    club: "Atlas Gym",
+  },
+  {
+    id: 2,
+    nombre: "Ana Gómez",
+    sexo: "Femenino",
+    peso: "57",
+    categoria: "57 kg",
+    club: "Titan Club",
+  },
+];
 
-function getCategoria(sexo: Sexo, peso: number): string {
-  if (!sexo || !peso || peso <= 0) return "";
+function obtenerCategoria(sexo: string, peso: string) {
+  const valor = Number(peso);
 
-  if (sexo === "Varonil") {
-    if (peso <= 59) return "59 kg";
-    if (peso <= 66) return "66 kg";
-    if (peso <= 74) return "74 kg";
-    if (peso <= 83) return "83 kg";
-    if (peso <= 93) return "93 kg";
-    if (peso <= 105) return "105 kg";
-    if (peso <= 120) return "120 kg";
-    return "+120 kg";
-  }
+  if (!valor) return "—";
 
-  if (sexo === "Femenil") {
-    if (peso <= 47) return "47 kg";
-    if (peso <= 52) return "52 kg";
-    if (peso <= 57) return "57 kg";
-    if (peso <= 63) return "63 kg";
-    if (peso <= 69) return "69 kg";
-    if (peso <= 76) return "76 kg";
-    if (peso <= 84) return "84 kg";
+  if (sexo === "Femenino") {
+    if (valor <= 47) return "47 kg";
+    if (valor <= 52) return "52 kg";
+    if (valor <= 57) return "57 kg";
+    if (valor <= 63) return "63 kg";
+    if (valor <= 69) return "69 kg";
+    if (valor <= 76) return "76 kg";
+    if (valor <= 84) return "84 kg";
     return "+84 kg";
   }
 
-  return "";
-}
-
-function toNumber(value: string): number {
-  const n = Number(String(value).replace(",", ".").trim());
-  return Number.isFinite(n) ? n : 0;
-}
-
-function compressImage(
-  file: File,
-  maxSize = 900,
-  quality = 0.8
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      const img = new Image();
-
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let { width, height } = img;
-
-        if (width > height && width > maxSize) {
-          height = Math.round((height * maxSize) / width);
-          width = maxSize;
-        } else if (height >= width && height > maxSize) {
-          width = Math.round((width * maxSize) / height);
-          height = maxSize;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          reject(new Error("No se pudo procesar la imagen."));
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-        const result = canvas.toDataURL("image/jpeg", quality);
-        resolve(result);
-      };
-
-      img.onerror = () => reject(new Error("No se pudo leer la imagen."));
-      img.src = String(reader.result);
-    };
-
-    reader.onerror = () => reject(new Error("No se pudo cargar el archivo."));
-    reader.readAsDataURL(file);
-  });
+  if (valor <= 59) return "59 kg";
+  if (valor <= 66) return "66 kg";
+  if (valor <= 74) return "74 kg";
+  if (valor <= 83) return "83 kg";
+  if (valor <= 93) return "93 kg";
+  if (valor <= 105) return "105 kg";
+  if (valor <= 120) return "120 kg";
+  return "+120 kg";
 }
 
 export default function RegistroPage() {
-  const [atletas, setAtletas] = useState<Atleta[]>([]);
+  const inputFileRef = useRef<HTMLInputElement | null>(null);
 
   const [nombre, setNombre] = useState("");
-  const [club, setClub] = useState("");
-  const [edad, setEdad] = useState("");
-  const [sexo, setSexo] = useState<Sexo>("");
+  const [sexo, setSexo] = useState("Masculino");
   const [peso, setPeso] = useState("");
-  const [foto, setFoto] = useState<string>("");
+  const [club, setClub] = useState("");
+  const [fotoPreview, setFotoPreview] = useState("");
+  const [fotoNombre, setFotoNombre] = useState("No se ha seleccionado archivo");
+  const [atletas, setAtletas] = useState<Atleta[]>(atletasIniciales);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
 
-  const [mensaje, setMensaje] = useState("");
-  const [error, setError] = useState("");
-  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const categoria = useMemo(() => obtenerCategoria(sexo, peso), [sexo, peso]);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(ATHLETES_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      setAtletas(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setAtletas([]);
-    }
-  }, []);
-
-  const pesoNum = useMemo(() => toNumber(peso), [peso]);
-  const edadNum = useMemo(() => toNumber(edad), [edad]);
-  const categoria = useMemo(() => getCategoria(sexo, pesoNum), [sexo, pesoNum]);
-
-  function persistir(lista: Atleta[]) {
-    setAtletas(lista);
-    localStorage.setItem(ATHLETES_KEY, JSON.stringify(lista));
-  }
-
-  function limpiarFormulario() {
+  const limpiarFormulario = () => {
+    setEditandoId(null);
     setNombre("");
-    setClub("");
-    setEdad("");
-    setSexo("");
+    setSexo("Masculino");
     setPeso("");
-    setFoto("");
-    setError("");
-  }
+    setClub("");
+    setFotoPreview("");
+    setFotoNombre("No se ha seleccionado archivo");
 
-  async function onFileChange(e: ChangeEvent<HTMLInputElement>) {
-    setMensaje("");
-    setError("");
+    if (inputFileRef.current) {
+      inputFileRef.current.value = "";
+    }
+  };
 
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const abrirSelectorArchivo = () => {
+    inputFileRef.current?.click();
+  };
 
-    if (!file.type.startsWith("image/")) {
-      setError("Selecciona una imagen válida.");
+  const onCambiarFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+
+    setFotoNombre(archivo.name);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFotoPreview(String(reader.result || ""));
+    };
+    reader.readAsDataURL(archivo);
+  };
+
+  const guardarOActualizarAtleta = () => {
+    if (!nombre.trim() || !peso.trim() || !club.trim()) {
+      alert("Completa nombre, peso y club.");
       return;
     }
 
-    try {
-      setSubiendoFoto(true);
-      const base64 = await compressImage(file, 900, 0.8);
-      setFoto(base64);
-      setMensaje("Foto cargada correctamente.");
-    } catch {
-      setError("No se pudo procesar la foto.");
-    } finally {
-      setSubiendoFoto(false);
-      e.target.value = "";
-    }
-  }
-
-  function guardarAtleta() {
-    setMensaje("");
-    setError("");
-
-    if (!nombre.trim()) {
-      setError("Escribe el nombre del atleta.");
-      return;
-    }
-
-    if (!edadNum || edadNum <= 0) {
-      setError("Captura una edad válida.");
-      return;
-    }
-
-    if (!sexo) {
-      setError("Selecciona el sexo.");
-      return;
-    }
-
-    if (!pesoNum || pesoNum <= 0) {
-      setError("Captura un peso corporal válido.");
-      return;
-    }
-
-    const nuevo: Atleta = {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-      nombre: nombre.trim().toUpperCase(),
-      club: club.trim().toUpperCase(),
-      edad: edadNum,
+    const atletaData: Atleta = {
+      id: editandoId ?? Date.now(),
+      nombre: nombre.trim(),
       sexo,
-      peso: pesoNum,
+      peso: peso.trim(),
       categoria,
-      foto,
-      createdAt: new Date().toISOString(),
+      club: club.trim(),
+      foto: fotoPreview || "",
     };
 
-    const lista = [nuevo, ...atletas];
-    persistir(lista);
-    setMensaje(`Atleta registrado en categoría ${categoria}.`);
+    if (editandoId !== null) {
+      setAtletas((prev) =>
+        prev.map((atleta) => (atleta.id === editandoId ? atletaData : atleta))
+      );
+    } else {
+      setAtletas((prev) => [atletaData, ...prev]);
+    }
+
     limpiarFormulario();
-  }
+  };
 
-  function eliminarAtleta(id: string) {
-    const lista = atletas.filter((a) => a.id !== id);
-    persistir(lista);
-    setMensaje("Atleta eliminado.");
-    setError("");
-  }
+  const editarAtleta = (atleta: Atleta) => {
+    setEditandoId(atleta.id);
+    setNombre(atleta.nombre ?? "");
+    setSexo(atleta.sexo ?? "Masculino");
+    setPeso(atleta.peso ?? "");
+    setClub(atleta.club ?? "");
+    setFotoPreview(atleta.foto ?? "");
+    setFotoNombre(atleta.foto ? "foto-cargada.jpg" : "No se ha seleccionado archivo");
 
-  function borrarLista() {
-    setAtletas([]);
-    localStorage.removeItem(ATHLETES_KEY);
-    setMensaje("Lista borrada.");
-    setError("");
-  }
+    setTimeout(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    }, 50);
+  };
+
+  const eliminarAtleta = (id: number) => {
+    setAtletas((prev) => prev.filter((atleta) => atleta.id !== id));
+
+    if (editandoId === id) {
+      limpiarFormulario();
+    }
+  };
 
   return (
-    <main className="min-h-screen bg-[#eef2f6] text-white">
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#3f3f41]/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 md:px-6">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.42em] text-cyan-400">
-              Powerlift Tlalmanalco
-            </p>
-            <h1 className="text-2xl font-black leading-none text-white md:text-3xl">
-              Registro de atletas
-            </h1>
+    <main className="registro-page">
+      <div className="registro-shell">
+        <header className="registro-header">
+          <div className="registro-brand">
+            <div className="registro-logo-box">
+              <Image
+                src="/jaguar-logo.png"
+                alt="Powerlift Tlalmanalco"
+                width={84}
+                height={84}
+                className="registro-logo"
+                priority
+              />
+            </div>
+
+            <div className="registro-title-wrap">
+              <p className="registro-kicker">REGISTRO</p>
+              <h1 className="registro-title">Atletas del campeonato</h1>
+              <p className="registro-subtitle">
+                Alta de competidores con foto, categoría automática y control visual profesional
+              </p>
+            </div>
           </div>
 
-          <nav className="flex flex-wrap items-center gap-2">
-            <Link href="/" className="rounded-xl border border-cyan-500/30 bg-[#1b1f29] px-4 py-2 text-sm font-bold text-white transition hover:border-cyan-400/60 hover:bg-[#232938]">
-              Inicio
-            </Link>
-            <Link href="/competencia" className="rounded-xl border border-cyan-500/30 bg-[#1b1f29] px-4 py-2 text-sm font-bold text-white transition hover:border-cyan-400/60 hover:bg-[#232938]">
-              Competencia
-            </Link>
-            <Link href="/marcador" className="rounded-xl border border-cyan-500/30 bg-[#1b1f29] px-4 py-2 text-sm font-bold text-white transition hover:border-cyan-400/60 hover:bg-[#232938]">
-              Marcador
-            </Link>
-            <Link href="/resultados" className="rounded-xl border border-cyan-500/30 bg-[#1b1f29] px-4 py-2 text-sm font-bold text-white transition hover:border-cyan-400/60 hover:bg-[#232938]">
-              Resultados
-            </Link>
-          </nav>
-        </div>
-      </header>
+          <Link href="/" className="registro-back-btn">
+            ← Volver
+          </Link>
+        </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.45fr_.85fr]">
-          <section className="rounded-[24px] border border-cyan-500/20 bg-[linear-gradient(135deg,#060812_0%,#0b1020_55%,#0d1120_100%)] p-5 shadow-[0_18px_50px_rgba(0,0,0,.22)]">
-            <div className="mb-5">
-              <p className="text-[10px] uppercase tracking-[0.42em] text-cyan-400">
-                Captura
-              </p>
-              <h2 className="text-3xl font-black text-white md:text-4xl">
-                Panel de registro
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm text-zinc-300 md:text-base">
-                Registra al atleta, súbele su foto o tómala desde el celular y el sistema la mostrará también en competencia y marcador.
-              </p>
+        <section className="registro-content">
+          <article className="registro-form-card">
+            <div className="section-tag">
+              {editandoId !== null ? "EDITANDO ATLETA" : "NUEVO ATLETA"}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-[10px] uppercase tracking-[0.28em] text-zinc-500">
-                  Nombre completo
-                </label>
-                <input
-                  value={nombre}
-                  onChange={(e) => {
-                    setNombre(e.target.value);
-                    setMensaje("");
-                    setError("");
-                  }}
-                  placeholder="Nombre completo"
-                  className="w-full rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
-                />
-              </div>
+            <h2>{editandoId !== null ? "Editar atleta" : "Registro"}</h2>
 
-              <div>
-                <label className="mb-2 block text-[10px] uppercase tracking-[0.28em] text-zinc-500">
-                  Club o equipo
-                </label>
-                <input
-                  value={club}
-                  onChange={(e) => {
-                    setClub(e.target.value);
-                    setMensaje("");
-                    setError("");
-                  }}
-                  placeholder="Club o equipo"
-                  className="w-full rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-[10px] uppercase tracking-[0.28em] text-zinc-500">
-                  Edad
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={edad}
-                  onChange={(e) => {
-                    setEdad(e.target.value);
-                    setMensaje("");
-                    setError("");
-                  }}
-                  placeholder="Edad"
-                  className="w-full rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-[10px] uppercase tracking-[0.28em] text-zinc-500">
-                  Sexo
-                </label>
-                <select
-                  value={sexo}
-                  onChange={(e) => {
-                    setSexo(e.target.value as Sexo);
-                    setMensaje("");
-                    setError("");
-                  }}
-                  className="w-full rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
-                >
-                  <option value="">Selecciona</option>
-                  <option value="Varonil">Varonil</option>
-                  <option value="Femenil">Femenil</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-[10px] uppercase tracking-[0.28em] text-zinc-500">
-                  Peso corporal (kg)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  step="0.1"
-                  value={peso}
-                  onChange={(e) => {
-                    setPeso(e.target.value);
-                    setMensaje("");
-                    setError("");
-                  }}
-                  placeholder="Peso corporal (kg)"
-                  className="w-full rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-500/20"
-                />
-              </div>
-
-              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3">
-                <p className="text-[10px] uppercase tracking-[0.32em] text-cyan-300">
-                  Categoría automática
-                </p>
-                <p className="mt-2 text-2xl font-black text-cyan-100 md:text-3xl">
-                  {categoria || "--"}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <label className="flex cursor-pointer items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/15">
-                Subir foto
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={onFileChange}
-                  className="hidden"
-                />
-              </label>
-
-              <label className="flex cursor-pointer items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/15">
-                Tomar foto
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={onFileChange}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={guardarAtleta}
-                className="rounded-xl bg-cyan-500 px-5 py-3 text-sm font-black text-black transition hover:brightness-110 md:text-base"
-              >
-                Guardar atleta
-              </button>
-
-              <button
-                type="button"
-                onClick={limpiarFormulario}
-                className="rounded-xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-white transition hover:bg-white/[0.08] md:text-base"
-              >
-                Limpiar
-              </button>
-
-              <button
-                type="button"
-                onClick={borrarLista}
-                className="rounded-xl border border-red-500/30 bg-red-500/15 px-5 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/20 md:text-base"
-              >
-                Borrar lista
-              </button>
-            </div>
-
-            {subiendoFoto ? (
-              <div className="mt-4 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-200">
-                Procesando foto...
-              </div>
-            ) : null}
-
-            {mensaje ? (
-              <div className="mt-4 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-200">
-                {mensaje}
-              </div>
-            ) : null}
-
-            {error ? (
-              <div className="mt-4 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200">
-                {error}
-              </div>
-            ) : null}
-          </section>
-
-          <aside className="rounded-[24px] border border-cyan-500/20 bg-[linear-gradient(180deg,#080b14_0%,#080b14_65%,#06141a_100%)] p-5 shadow-[0_18px_50px_rgba(0,0,0,.2)]">
-            <p className="text-[10px] uppercase tracking-[0.42em] text-cyan-400">
-              Vista previa
-            </p>
-
-            <div className="mt-4 rounded-[22px] border border-white/10 bg-black/45 p-4">
-              <div className="mb-4 flex justify-center">
-                {foto ? (
-                  <img
-                    src={foto}
-                    alt="Foto del atleta"
-                    className="h-36 w-36 rounded-3xl border border-cyan-400/30 object-cover shadow-[0_0_22px_rgba(0,180,255,.18)]"
-                  />
+            <div className="photo-area">
+              <div className="photo-preview">
+                {fotoPreview ? (
+                  <img src={fotoPreview} alt="Preview" />
                 ) : (
-                  <div className="flex h-36 w-36 items-center justify-center rounded-3xl border border-dashed border-white/15 bg-white/[0.03] text-center text-sm text-zinc-500">
-                    Sin foto
-                  </div>
+                  <span className="photo-placeholder">Sin foto</span>
                 )}
               </div>
 
-              <p className="text-sm text-zinc-400">Atleta</p>
-              <h3 className="mt-2 text-3xl font-black leading-tight text-white md:text-4xl">
-                {nombre.trim() || "Nombre del atleta"}
-              </h3>
+              <div className="photo-actions">
+                <input
+                  ref={inputFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden-file-input"
+                  onChange={onCambiarFoto}
+                />
 
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                  <p className="text-[10px] uppercase tracking-[0.28em] text-[#c8a46b]">Club</p>
-                  <p className="mt-2 text-xl font-black text-white md:text-2xl">
-                    {club.trim() || "--"}
-                  </p>
-                </div>
+                <button type="button" className="upload-btn" onClick={abrirSelectorArchivo}>
+                  Subir foto
+                </button>
 
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                  <p className="text-[10px] uppercase tracking-[0.28em] text-[#c8a46b]">Edad</p>
-                  <p className="mt-2 text-xl font-black text-white md:text-2xl">
-                    {edad || "--"}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                  <p className="text-[10px] uppercase tracking-[0.28em] text-[#c8a46b]">Sexo</p>
-                  <p className="mt-2 text-xl font-black text-white md:text-2xl">
-                    {sexo || "--"}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                  <p className="text-[10px] uppercase tracking-[0.28em] text-[#c8a46b]">Peso</p>
-                  <p className="mt-2 text-xl font-black text-white md:text-2xl">
-                    {peso ? `${peso} kg` : "--"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
-                <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-300">
-                  Categoría asignada
-                </p>
-                <p className="mt-2 text-2xl font-black text-cyan-200 md:text-3xl">
-                  {categoria || "--"}
-                </p>
+                <span className="upload-name">{fotoNombre}</span>
               </div>
             </div>
-          </aside>
-        </div>
 
-        <section className="mt-6 rounded-[24px] border border-cyan-500/20 bg-[linear-gradient(135deg,#060812_0%,#0b1020_55%,#0d1120_100%)] p-5 shadow-[0_18px_50px_rgba(0,0,0,.2)]">
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.42em] text-cyan-400">
-                Lista
-              </p>
-              <h2 className="text-2xl font-black text-white md:text-3xl">
-                Atletas registrados
-              </h2>
+            <div className="registro-form-grid">
+              <div className="field">
+                <label>Nombre</label>
+                <input
+                  className="field-input"
+                  placeholder="Ej. Juan García"
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                />
+              </div>
+
+              <div className="field">
+                <label>Sexo</label>
+                <select
+                  className="field-input"
+                  value={sexo}
+                  onChange={(e) => setSexo(e.target.value)}
+                >
+                  <option>Masculino</option>
+                  <option>Femenino</option>
+                </select>
+              </div>
+
+              <div className="field">
+                <label>Peso corporal</label>
+                <input
+                  className="field-input"
+                  placeholder="Ej. 83"
+                  value={peso}
+                  onChange={(e) => setPeso(e.target.value)}
+                />
+              </div>
+
+              <div className="field">
+                <label>Categoría automática</label>
+                <div className="field-readonly">{categoria}</div>
+              </div>
+
+              <div className="field field-full">
+                <label>Club / equipo</label>
+                <input
+                  className="field-input"
+                  placeholder="Ej. Atlas Gym"
+                  value={club}
+                  onChange={(e) => setClub(e.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-300">
-              Total: {atletas.length}
-            </div>
-          </div>
+            <div className="form-footer">
+              <button type="button" className="save-btn" onClick={guardarOActualizarAtleta}>
+                {editandoId !== null ? "Actualizar atleta →" : "Guardar atleta →"}
+              </button>
 
-          {atletas.length === 0 ? (
-            <div className="rounded-[20px] border border-dashed border-white/10 bg-black/25 p-8 text-center text-zinc-400">
-              Aún no hay atletas registrados.
+              {editandoId !== null && (
+                <button type="button" className="cancel-btn" onClick={limpiarFormulario}>
+                  Cancelar
+                </button>
+              )}
             </div>
-          ) : (
-            <div className="overflow-x-auto rounded-[20px] border border-white/10 bg-black/25">
-              <table className="min-w-full text-left">
-                <thead className="border-b border-white/10 text-sm text-zinc-400">
+          </article>
+
+          <article className="registro-table-card">
+            <div className="section-tag">ATLETAS REGISTRADOS</div>
+            <h2>Listado</h2>
+
+            <div className="table-scroll">
+              <table className="registro-table">
+                <thead>
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Foto</th>
-                    <th className="px-4 py-3 font-semibold">Nombre</th>
-                    <th className="px-4 py-3 font-semibold">Club</th>
-                    <th className="px-4 py-3 font-semibold">Edad</th>
-                    <th className="px-4 py-3 font-semibold">Sexo</th>
-                    <th className="px-4 py-3 font-semibold">Peso</th>
-                    <th className="px-4 py-3 font-semibold">Categoría</th>
-                    <th className="px-4 py-3 font-semibold">Acción</th>
+                    <th>Foto</th>
+                    <th>Nombre</th>
+                    <th>Sexo</th>
+                    <th>Peso</th>
+                    <th>Categoría</th>
+                    <th>Club</th>
+                    <th>Acciones</th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  {atletas.map((a) => (
-                    <tr key={a.id} className="border-b border-white/5 text-white transition hover:bg-white/[0.03]">
-                      <td className="px-4 py-3">
-                        {a.foto ? (
-                          <img
-                            src={a.foto}
-                            alt={a.nombre}
-                            className="h-14 w-14 rounded-xl border border-white/10 object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">
-                            Sin foto
-                          </div>
-                        )}
+                  {atletas.map((atleta) => (
+                    <tr key={atleta.id}>
+                      <td>
+                        <div className="mini-photo">
+                          {atleta.foto ? (
+                            <img src={atleta.foto} alt={atleta.nombre} />
+                          ) : (
+                            <span>FOTO</span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 font-bold">{a.nombre}</td>
-                      <td className="px-4 py-3 text-zinc-300">{a.club || "--"}</td>
-                      <td className="px-4 py-3">{a.edad}</td>
-                      <td className="px-4 py-3">{a.sexo}</td>
-                      <td className="px-4 py-3">{a.peso} kg</td>
-                      <td className="px-4 py-3 text-cyan-300">{a.categoria}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => eliminarAtleta(a.id)}
-                          className="rounded-xl border border-red-500/30 bg-red-500/15 px-4 py-2 text-sm font-bold text-red-200 transition hover:bg-red-500/20"
-                        >
-                          Eliminar
-                        </button>
+                      <td>{atleta.nombre}</td>
+                      <td>{atleta.sexo}</td>
+                      <td>{atleta.peso} kg</td>
+                      <td>{atleta.categoria}</td>
+                      <td>{atleta.club}</td>
+                      <td>
+                        <div className="acciones-wrap">
+                          <button
+                            type="button"
+                            className="action-btn edit-btn"
+                            onClick={() => editarAtleta(atleta)}
+                          >
+                            Editar
+                          </button>
+
+                          <button
+                            type="button"
+                            className="action-btn delete-btn"
+                            onClick={() => eliminarAtleta(atleta.id)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
+
+                  {atletas.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="empty-row">
+                        No hay atletas registrados.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
-          )}
+          </article>
         </section>
       </div>
     </main>
