@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 type Sexo = "Masculino" | "Femenino";
-type Lift = "Sentadilla" | "Press banca" | "Peso muerto";
 
 type Athlete = {
   id: string;
@@ -13,154 +13,196 @@ type Athlete = {
   peso: number;
   categoria: string;
   club: string;
-  foto?: string;
+  created_at?: string;
 };
 
-type AttemptValues = {
-  squat1: number | null;
-  squat2: number | null;
-  squat3: number | null;
-  bench1: number | null;
-  bench2: number | null;
-  bench3: number | null;
-  deadlift1: number | null;
-  deadlift2: number | null;
-  deadlift3: number | null;
+type Attempt = {
+  id: string;
+  athlete_id: string;
+  athlete_name: string;
+  movimiento: "Sentadilla" | "Press de banca" | "Peso muerto";
+  intento: "Intento 1" | "Intento 2" | "Intento 3";
+  peso: number;
+  valido: boolean | null;
+  created_at?: string;
 };
 
-type AthleteResult = Athlete & AttemptValues;
+type AthleteResult = {
+  athlete: Athlete;
+  squat: number;
+  bench: number;
+  deadlift: number;
+  total: number;
+};
 
-const ATHLETES_STORAGE_KEY = "powerlift-athletes";
+function formatError(error: unknown) {
+  if (!error) return "Error desconocido";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
 
-function bestOf(values: Array<number | null>) {
-  return Math.max(...values.map((v) => v ?? 0), 0);
+  if (typeof error === "object") {
+    const maybe = error as {
+      message?: string;
+      details?: string;
+      hint?: string;
+      code?: string;
+    };
+
+    return [
+      maybe.message,
+      maybe.details,
+      maybe.hint,
+      maybe.code ? `(code: ${maybe.code})` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
+  }
+
+  return "Error desconocido";
 }
 
-function totalOf(a: AthleteResult) {
-  return (
-    bestOf([a.squat1, a.squat2, a.squat3]) +
-    bestOf([a.bench1, a.bench2, a.bench3]) +
-    bestOf([a.deadlift1, a.deadlift2, a.deadlift3])
+function getBestValidLift(
+  attempts: Attempt[],
+  athleteId: string,
+  movimiento: Attempt["movimiento"]
+) {
+  const lifts = attempts.filter(
+    (a) =>
+      a.athlete_id === athleteId &&
+      a.movimiento === movimiento &&
+      a.valido !== false
   );
-}
 
-function dots(value: number) {
-  return Number((value * 0.62).toFixed(2));
-}
-
-function emptyAttempts(): AttemptValues {
-  return {
-    squat1: null,
-    squat2: null,
-    squat3: null,
-    bench1: null,
-    bench2: null,
-    bench3: null,
-    deadlift1: null,
-    deadlift2: null,
-    deadlift3: null,
-  };
+  if (lifts.length === 0) return 0;
+  return Math.max(...lifts.map((a) => Number(a.peso) || 0));
 }
 
 export default function ResultadosPage() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
-  const [results, setResults] = useState<Record<string, AttemptValues>>({});
-  const [selectedCategory, setSelectedCategory] = useState("Todas");
-  const [selectedSexo, setSelectedSexo] = useState("Todos");
-  const [selectedLift, setSelectedLift] = useState<Lift>("Sentadilla");
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  useEffect(() => {
+  const [sexo, setSexo] = useState<Sexo>("Masculino");
+  const [categoria, setCategoria] = useState("Todas");
+  const [athleteId, setAthleteId] = useState("");
+
+  const cargarTodo = async () => {
+    setLoading(true);
+    setErrorMsg("");
+
     try {
-      const saved = localStorage.getItem(ATHLETES_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as Athlete[];
-        if (Array.isArray(parsed)) {
-          setAthletes(parsed);
+      const [athletesRes, attemptsRes] = await Promise.all([
+        supabase.from("athletes").select("*").order("created_at", { ascending: false }),
+        supabase.from("attempts").select("*").order("created_at", { ascending: false }),
+      ]);
 
-          const initialResults: Record<string, AttemptValues> = {};
-          parsed.forEach((a) => {
-            initialResults[a.id] = {
-              squat1: null,
-              squat2: null,
-              squat3: null,
-              bench1: null,
-              bench2: null,
-              bench3: null,
-              deadlift1: null,
-              deadlift2: null,
-              deadlift3: null,
-            };
-          });
-          setResults(initialResults);
-        }
+      if (athletesRes.error) {
+        setErrorMsg(`Error al cargar atletas: ${formatError(athletesRes.error)}`);
+        setAthletes([]);
+        setAttempts([]);
+        return;
       }
-    } catch {
+
+      if (attemptsRes.error) {
+        setErrorMsg(`Error al cargar intentos: ${formatError(attemptsRes.error)}`);
+        setAthletes((athletesRes.data as Athlete[]) || []);
+        setAttempts([]);
+        return;
+      }
+
+      const athletesRows = (athletesRes.data as Athlete[]) || [];
+      const attemptsRows = (attemptsRes.data as Attempt[]) || [];
+
+      setAthletes(athletesRows);
+      setAttempts(attemptsRows);
+
+      const firstMale = athletesRows.find((a) => a.sexo === "Masculino");
+      if (firstMale) {
+        setAthleteId(firstMale.id);
+      } else {
+        const firstAny = athletesRows[0];
+        setAthleteId(firstAny?.id || "");
+      }
+    } catch (error) {
+      setErrorMsg(`Error general al cargar resultados: ${formatError(error)}`);
       setAthletes([]);
-      setResults({});
+      setAttempts([]);
+    } finally {
+      setLoading(false);
     }
-  }, []);
-
-  const categories = useMemo(() => {
-    const all = Array.from(new Set(athletes.map((a) => a.categoria).filter(Boolean)));
-    return ["Todas", ...all];
-  }, [athletes]);
-
-  const rows = useMemo(() => {
-    const merged: AthleteResult[] = athletes.map((a) => ({
-      ...a,
-      ...(results[a.id] ?? emptyAttempts()),
-    }));
-
-    const filtered = merged.filter((a) => {
-      const passCategory = selectedCategory === "Todas" || a.categoria === selectedCategory;
-      const passSexo = selectedSexo === "Todos" || a.sexo === selectedSexo;
-      return passCategory && passSexo;
-    });
-
-    const ranked = [...filtered].sort((a, b) => totalOf(b) - totalOf(a));
-
-    return ranked.map((a, index) => ({
-      ...a,
-      rank: index + 1,
-      squatBest: bestOf([a.squat1, a.squat2, a.squat3]),
-      benchBest: bestOf([a.bench1, a.bench2, a.bench3]),
-      deadliftBest: bestOf([a.deadlift1, a.deadlift2, a.deadlift3]),
-      total: totalOf(a),
-      dots: dots(totalOf(a)),
-    }));
-  }, [athletes, results, selectedCategory, selectedSexo]);
-
-  const leader = rows[0] ?? null;
-
-  const updateAttempt = (athleteId: string, key: keyof AttemptValues, value: string) => {
-    const num = value.trim() === "" ? null : Number(value);
-    setResults((prev) => ({
-      ...prev,
-      [athleteId]: {
-        ...(prev[athleteId] ?? emptyAttempts()),
-        [key]: Number.isNaN(num) ? null : num,
-      },
-    }));
   };
 
-  const currentLiftCols = useMemo(() => {
-    if (selectedLift === "Sentadilla") {
-      return {
-        keys: ["squat1", "squat2", "squat3"] as Array<keyof AttemptValues>,
-        bestKey: "squatBest" as const,
-      };
+  useEffect(() => {
+    void cargarTodo();
+  }, []);
+
+  const categoriasDisponibles = useMemo(() => {
+    const filtered = athletes.filter((a) => a.sexo === sexo);
+    const unique = Array.from(new Set(filtered.map((a) => a.categoria))).sort();
+    return ["Todas", ...unique];
+  }, [athletes, sexo]);
+
+  const athletesFiltrados = useMemo(() => {
+    return athletes.filter((a) => {
+      const sameSexo = a.sexo === sexo;
+      const sameCategoria = categoria === "Todas" ? true : a.categoria === categoria;
+      return sameSexo && sameCategoria;
+    });
+  }, [athletes, sexo, categoria]);
+
+  useEffect(() => {
+    if (athletesFiltrados.length === 0) {
+      setAthleteId("");
+      return;
     }
-    if (selectedLift === "Press banca") {
-      return {
-        keys: ["bench1", "bench2", "bench3"] as Array<keyof AttemptValues>,
-        bestKey: "benchBest" as const,
-      };
+
+    const exists = athletesFiltrados.some((a) => a.id === athleteId);
+    if (!exists) {
+      setAthleteId(athletesFiltrados[0].id);
     }
-    return {
-      keys: ["deadlift1", "deadlift2", "deadlift3"] as Array<keyof AttemptValues>,
-      bestKey: "deadliftBest" as const,
-    };
-  }, [selectedLift]);
+  }, [athletesFiltrados, athleteId]);
+
+  const resultados = useMemo<AthleteResult[]>(() => {
+    return athletesFiltrados
+      .map((athlete) => {
+        const squat = getBestValidLift(attempts, athlete.id, "Sentadilla");
+        const bench = getBestValidLift(attempts, athlete.id, "Press de banca");
+        const deadlift = getBestValidLift(attempts, athlete.id, "Peso muerto");
+        const total = squat + bench + deadlift;
+
+        return {
+          athlete,
+          squat,
+          bench,
+          deadlift,
+          total,
+        };
+      })
+      .sort((a, b) => b.total - a.total);
+  }, [athletesFiltrados, attempts]);
+
+  const resultadoSeleccionado = useMemo(() => {
+    return resultados.find((r) => r.athlete.id === athleteId) || null;
+  }, [resultados, athleteId]);
+
+  const handleBorrarResultados = async () => {
+    const ok = window.confirm("¿Borrar todos los intentos registrados?");
+    if (!ok) return;
+
+    try {
+      const { error } = await supabase.from("attempts").delete().not("id", "is", null);
+
+      if (error) {
+        alert(`Error al borrar resultados: ${formatError(error)}`);
+        return;
+      }
+
+      await cargarTodo();
+    } catch (error) {
+      alert(`Error al borrar resultados: ${formatError(error)}`);
+    }
+  };
 
   return (
     <main className="resultados-page">
@@ -170,194 +212,156 @@ export default function ResultadosPage() {
 
       <section className="resultados-wrap">
         <header className="hero">
-          <div className="heroBrand">
-            <div className="logoBox">
-              <img src="/jaguar-logo.png" alt="Logo Powerlifting" className="logoImg" />
-            </div>
-
-            <div className="heroText">
-              <p className="eyebrow">RESULTADOS</p>
-              <h1>Ranking de competencia</h1>
-              <p>Clasificación, intentos, mejores marcas y total general en un solo tablero</p>
-            </div>
+          <div>
+            <h1>Resultados</h1>
+            <p>Selecciona sexo, categoría y competidor para ver sus resultados.</p>
           </div>
 
-          <Link href="/" className="volverBtn">
-            ← Volver
-          </Link>
+          <div className="heroActions">
+            <button className="dangerBtn" type="button" onClick={handleBorrarResultados}>
+              Borrar resultados
+            </button>
+            <Link href="/" className="volverBtn">
+              ← Volver
+            </Link>
+          </div>
         </header>
 
-        <section className="topGrid">
-          <article className="panel leaderPanel">
-            <div className="panelGlow" />
-            <div className="pill">LÍDER ACTUAL</div>
-            <h2>Primer lugar</h2>
+        {errorMsg && <div className="errorBox">{errorMsg}</div>}
 
-            {leader ? (
-              <div className="leaderCard">
-                <div className="leaderPhoto">
-                  {leader.foto ? <img src={leader.foto} alt={leader.nombre} /> : <span>Sin foto</span>}
-                </div>
-
-                <div className="leaderInfo">
-                  <div className="leaderName">{leader.nombre}</div>
-
-                  <div className="leaderStats">
-                    <div className="statBox">
-                      <span>Categoría</span>
-                      <strong>{leader.categoria}</strong>
-                    </div>
-                    <div className="statBox">
-                      <span>Club</span>
-                      <strong>{leader.club || "—"}</strong>
-                    </div>
-                    <div className="statBox">
-                      <span>Total</span>
-                      <strong>{leader.total} kg</strong>
-                    </div>
-                    <div className="statBox">
-                      <span>Puntos</span>
-                      <strong>{leader.dots}</strong>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="emptyLeader">Sin atletas registrados</div>
-            )}
-          </article>
-
-          <article className="panel filtersPanel">
-            <div className="panelGlow" />
-            <div className="pill">FILTROS</div>
-            <h2>Vista</h2>
-
-            <div className="field">
-              <label>Categoría</label>
-              <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-
+        <section className="filtersCard">
+          <div className="filtersGrid">
             <div className="field">
               <label>Sexo</label>
-              <select value={selectedSexo} onChange={(e) => setSelectedSexo(e.target.value)}>
-                <option value="Todos">Todos</option>
+              <select value={sexo} onChange={(e) => setSexo(e.target.value as Sexo)}>
                 <option value="Masculino">Masculino</option>
                 <option value="Femenino">Femenino</option>
               </select>
             </div>
 
             <div className="field">
-              <label>Disciplina editable</label>
-              <select value={selectedLift} onChange={(e) => setSelectedLift(e.target.value as Lift)}>
-                <option value="Sentadilla">Sentadilla</option>
-                <option value="Press banca">Press banca</option>
-                <option value="Peso muerto">Peso muerto</option>
+              <label>Categoría</label>
+              <select value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+                {categoriasDisponibles.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
               </select>
             </div>
-          </article>
 
-          <article className="panel summaryPanel">
-            <div className="panelGlow" />
-            <div className="pill">RESUMEN</div>
-            <h2>Competencia</h2>
-
-            <div className="summaryGrid">
-              <div className="summaryBox">
-                <span>Atletas</span>
-                <strong>{rows.length}</strong>
-              </div>
-              <div className="summaryBox">
-                <span>Disciplina</span>
-                <strong>{selectedLift}</strong>
-              </div>
-              <div className="summaryBox">
-                <span>Mejor total</span>
-                <strong>{leader ? `${leader.total} kg` : "0 kg"}</strong>
-              </div>
-              <div className="summaryBox">
-                <span>Mejor puntaje</span>
-                <strong>{leader ? leader.dots : 0}</strong>
-              </div>
+            <div className="field">
+              <label>Competidor</label>
+              <select
+                value={athleteId}
+                onChange={(e) => setAthleteId(e.target.value)}
+                disabled={athletesFiltrados.length === 0}
+              >
+                {athletesFiltrados.length === 0 ? (
+                  <option value="">Sin competidores</option>
+                ) : (
+                  athletesFiltrados.map((athlete) => (
+                    <option key={athlete.id} value={athlete.id}>
+                      {athlete.nombre}
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
-          </article>
-        </section>
+          </div>
 
-        <section className="bottomGrid">
-          <article className="panel tablePanel">
-            <div className="panelGlow" />
-            <div className="pill">TABLERO GENERAL</div>
-            <h2>Clasificación</h2>
+          {loading ? (
+            <div className="emptyBox">Cargando resultados...</div>
+          ) : resultados.length === 0 ? (
+            <div className="emptyBox">
+              No hay resultados para mostrar. Guarda atletas y al menos un intento en competencia.
+            </div>
+          ) : resultadoSeleccionado ? (
+            <div className="resultCard">
+              <div className="athleteHead">
+                <div>
+                  <span className="miniLabel">Competidor</span>
+                  <h2>{resultadoSeleccionado.athlete.nombre}</h2>
+                </div>
 
-            <div className="tableWrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th className="colRank">Rank</th>
-                    <th className="colFoto">Foto</th>
-                    <th>Nombre</th>
-                    <th>Club</th>
-                    <th>Categoría</th>
-                    <th>Peso</th>
-                    <th>I1</th>
-                    <th>I2</th>
-                    <th>I3</th>
-                    <th>Mejor</th>
-                    <th>Total</th>
-                    <th>Puntos</th>
-                  </tr>
-                </thead>
+                <div className="headMeta">
+                  <div>
+                    <span>Club</span>
+                    <strong>{resultadoSeleccionado.athlete.club || "—"}</strong>
+                  </div>
+                  <div>
+                    <span>Categoría</span>
+                    <strong>{resultadoSeleccionado.athlete.categoria}</strong>
+                  </div>
+                  <div>
+                    <span>Peso corporal</span>
+                    <strong>{resultadoSeleccionado.athlete.peso} kg</strong>
+                  </div>
+                </div>
+              </div>
 
-                <tbody>
-                  {rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={12} className="emptyCell">
-                        ⚠️ Sin datos para mostrar
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((a) => (
-                      <tr key={a.id}>
-                        <td className="rankCell">{a.rank}</td>
-                        <td className="colFoto">
-                          {a.foto ? (
-                            <img src={a.foto} alt={a.nombre} className="miniFoto" />
-                          ) : (
-                            <div className="miniFoto miniFotoEmpty">FOTO</div>
-                          )}
-                        </td>
-                        <td className="nameCell">{a.nombre}</td>
-                        <td>{a.club || "—"}</td>
-                        <td>{a.categoria}</td>
-                        <td>{a.peso} kg</td>
+              <div className="marksGrid">
+                <div className="markCard">
+                  <span>Sentadilla</span>
+                  <strong>{resultadoSeleccionado.squat} kg</strong>
+                </div>
+                <div className="markCard">
+                  <span>Press de banca</span>
+                  <strong>{resultadoSeleccionado.bench} kg</strong>
+                </div>
+                <div className="markCard">
+                  <span>Peso muerto</span>
+                  <strong>{resultadoSeleccionado.deadlift} kg</strong>
+                </div>
+                <div className="markCard totalCard">
+                  <span>Total</span>
+                  <strong>{resultadoSeleccionado.total} kg</strong>
+                </div>
+              </div>
 
-                        {currentLiftCols.keys.map((key) => (
-                          <td key={key}>
-                            <input
-                              className="attemptInput"
-                              type="number"
-                              value={results[a.id]?.[key] ?? ""}
-                              onChange={(e) => updateAttempt(a.id, key, e.target.value)}
-                              placeholder="0"
-                            />
-                          </td>
-                        ))}
+              <div className="rankingBlock">
+                <h3>Ranking de la categoría</h3>
 
-                        <td className="bestCell">{a[currentLiftCols.bestKey]} kg</td>
-                        <td className="totalCell">{a.total} kg</td>
-                        <td className="pointsCell">{a.dots}</td>
+                <div className="tableWrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Lugar</th>
+                        <th>Competidor</th>
+                        <th>Club</th>
+                        <th>Sentadilla</th>
+                        <th>Press</th>
+                        <th>Peso muerto</th>
+                        <th>Total</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {resultados.map((item, index) => (
+                        <tr
+                          key={item.athlete.id}
+                          className={
+                            item.athlete.id === resultadoSeleccionado.athlete.id
+                              ? "activeRow"
+                              : ""
+                          }
+                        >
+                          <td>#{index + 1}</td>
+                          <td>{item.athlete.nombre}</td>
+                          <td>{item.athlete.club || "—"}</td>
+                          <td>{item.squat} kg</td>
+                          <td>{item.bench} kg</td>
+                          <td>{item.deadlift} kg</td>
+                          <td>{item.total} kg</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-          </article>
+          ) : (
+            <div className="emptyBox">No hay resultados para mostrar.</div>
+          )}
         </section>
       </section>
 
@@ -365,313 +369,271 @@ export default function ResultadosPage() {
         .resultados-page {
           position: relative;
           min-height: 100vh;
-          padding: 10px;
+          padding: 16px;
           overflow: hidden;
         }
 
         .bg-image {
           position: fixed;
           inset: 0;
-          z-index: 0;
           background-image: url("/fondo.png");
           background-size: cover;
-          background-position: center top;
+          background-position: center;
           background-repeat: no-repeat;
-          transform: scale(1.01);
-          filter: brightness(0.76) saturate(0.95);
+          transform: scale(1.02);
+          filter: brightness(0.76) saturate(1);
         }
 
         .resultados-overlay {
           position: fixed;
           inset: 0;
-          z-index: 0;
-          pointer-events: none;
           background:
-            linear-gradient(rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0.72)),
-            radial-gradient(circle at 20% 80%, rgba(255, 140, 0, 0.08), transparent 35%),
-            radial-gradient(circle at 80% 20%, rgba(0, 120, 255, 0.06), transparent 30%);
+            linear-gradient(rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.72)),
+            radial-gradient(circle at 20% 20%, rgba(255, 170, 0, 0.08), transparent 30%),
+            radial-gradient(circle at 80% 30%, rgba(0, 120, 255, 0.08), transparent 28%);
         }
 
         .resultados-noise {
           position: fixed;
           inset: 0;
-          z-index: 0;
-          pointer-events: none;
-          opacity: 0.03;
+          opacity: 0.035;
           background-image:
             radial-gradient(circle, rgba(255, 220, 140, 0.95) 1px, transparent 1.7px),
             radial-gradient(circle, rgba(255, 160, 0, 0.2) 1px, transparent 2px);
           background-size: 180px 180px, 260px 260px;
           background-position: 0 0, 60px 90px;
+          pointer-events: none;
         }
 
         .resultados-wrap {
           position: relative;
           z-index: 1;
-          width: min(100%, 1580px);
+          width: min(100%, 1380px);
           margin: 0 auto;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
+          border-radius: 34px;
+          padding: 28px;
+          background: linear-gradient(135deg, rgba(18, 10, 4, 0.72), rgba(0, 0, 0, 0.52));
+          backdrop-filter: blur(12px) saturate(140%);
+          border: 1px solid rgba(255, 190, 60, 0.16);
+          box-shadow:
+            0 18px 40px rgba(0, 0, 0, 0.34),
+            inset 0 0 18px rgba(255, 166, 0, 0.035);
         }
 
         .hero {
           display: flex;
-          align-items: flex-start;
           justify-content: space-between;
-          gap: 14px;
-          padding: 2px 4px 0;
+          align-items: flex-start;
+          gap: 16px;
+          margin-bottom: 22px;
         }
 
-        .heroBrand {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          min-width: 0;
-        }
-
-        .logoBox {
-          width: 60px;
-          height: 60px;
-          border-radius: 16px;
-          background: rgba(10, 10, 10, 0.34);
-          backdrop-filter: blur(10px) saturate(135%);
-          border: 1px solid rgba(255, 196, 60, 0.16);
-          display: grid;
-          place-items: center;
-          overflow: hidden;
-          flex-shrink: 0;
-          box-shadow:
-            0 10px 22px rgba(0, 0, 0, 0.22),
-            inset 0 1px 0 rgba(255, 255, 255, 0.03);
-        }
-
-        .logoImg {
-          width: 42px;
-          height: 42px;
-          object-fit: contain;
-          filter: drop-shadow(0 0 8px rgba(255, 196, 60, 0.14));
-        }
-
-        .eyebrow {
-          margin: 0 0 4px;
-          font-size: 10px;
-          font-weight: 900;
-          letter-spacing: 0.3em;
-          color: #f5cf72;
-        }
-
-        .heroText h1 {
+        .hero h1 {
           margin: 0;
-          font-size: clamp(26px, 2.8vw, 56px);
+          font-size: clamp(44px, 5vw, 76px);
           line-height: 0.95;
-          font-weight: 1000;
           color: #fff7df;
+          font-weight: 1000;
         }
 
-        .heroText p {
-          margin: 4px 0 0;
-          font-size: clamp(12px, 0.9vw, 15px);
+        .hero p {
+          margin: 10px 0 0;
           color: rgba(255, 255, 255, 0.88);
+          font-size: 18px;
+        }
+
+        .heroActions {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .dangerBtn,
+        .volverBtn {
+          min-height: 48px;
+          padding: 0 18px;
+          border-radius: 16px;
+          font-weight: 900;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-decoration: none;
+        }
+
+        .dangerBtn {
+          border: 1px solid rgba(255, 90, 90, 0.25);
+          background: rgba(50, 10, 10, 0.36);
+          color: #ffb8b8;
+          cursor: pointer;
         }
 
         .volverBtn {
-          min-height: 38px;
-          padding: 0 14px;
-          border-radius: 14px;
-          background: rgba(10, 10, 10, 0.34);
-          backdrop-filter: blur(10px) saturate(140%);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 900;
-          font-size: 14px;
           color: #fff;
-          white-space: nowrap;
-          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
         }
 
-        .topGrid {
-          display: grid;
-          grid-template-columns: 1.1fr 0.75fr 0.75fr;
-          gap: 10px;
-        }
-
-        .bottomGrid {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 10px;
-        }
-
-        .panel {
-          position: relative;
-          background: linear-gradient(
-            135deg,
-            rgba(18, 10, 4, 0.42),
-            rgba(0, 0, 0, 0.34)
-          );
-          backdrop-filter: blur(12px) saturate(140%);
-          border: 1px solid rgba(255, 190, 60, 0.14);
-          border-radius: 24px;
-          padding: 12px;
-          overflow: hidden;
-          box-shadow:
-            0 14px 28px rgba(0, 0, 0, 0.3),
-            inset 0 0 14px rgba(255, 166, 0, 0.03);
-        }
-
-        .panelGlow {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          background:
-            radial-gradient(circle at top left, rgba(255, 196, 60, 0.03), transparent 20%),
-            radial-gradient(circle at bottom right, rgba(0, 136, 255, 0.025), transparent 24%);
-          z-index: 0;
-        }
-
-        .pill,
-        .panel h2,
-        .leaderCard,
-        .field,
-        .summaryGrid,
-        .tableWrap,
-        .emptyLeader {
-          position: relative;
-          z-index: 1;
-        }
-
-        .pill {
-          display: inline-flex;
-          width: fit-content;
-          padding: 5px 10px;
-          border-radius: 999px;
-          background: rgba(70, 46, 10, 0.34);
-          border: 1px solid rgba(255, 196, 60, 0.16);
-          color: #f5d27c;
-          font-size: 10px;
-          font-weight: 900;
-          letter-spacing: 0.18em;
-        }
-
-        .panel h2 {
-          margin: 8px 0 10px;
-          font-size: clamp(22px, 1.9vw, 40px);
-          line-height: 1;
-          color: #ffffff;
-          font-weight: 1000;
-        }
-
-        .leaderCard {
-          display: grid;
-          grid-template-columns: 92px 1fr;
-          gap: 12px;
-        }
-
-        .leaderPhoto {
-          width: 92px;
-          height: 92px;
-          border-radius: 18px;
-          overflow: hidden;
-          background: rgba(0, 0, 0, 0.46);
-          border: 1px solid rgba(255, 196, 60, 0.12);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: rgba(255, 255, 255, 0.88);
-          font-size: 12px;
-          font-weight: 900;
-        }
-
-        .leaderPhoto img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .leaderInfo {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          min-width: 0;
-        }
-
-        .leaderName {
-          font-size: clamp(20px, 1.8vw, 34px);
-          font-weight: 1000;
+        .errorBox {
+          margin-bottom: 14px;
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: rgba(140, 20, 20, 0.5);
+          border: 1px solid rgba(255, 110, 110, 0.35);
           color: #fff;
-          line-height: 0.95;
+          font-weight: 700;
+          backdrop-filter: blur(8px);
         }
 
-        .leaderStats,
-        .summaryGrid {
+        .filtersCard {
+          border-radius: 26px;
+          background: rgba(0, 0, 0, 0.22);
+          border: 1px solid rgba(255, 190, 60, 0.1);
+          padding: 18px;
+        }
+
+        .filtersGrid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 8px;
-        }
-
-        .statBox,
-        .summaryBox {
-          background: rgba(0, 0, 0, 0.34);
-          border: 1px solid rgba(255, 196, 60, 0.08);
-          border-radius: 14px;
-          padding: 10px;
-          backdrop-filter: blur(6px);
-        }
-
-        .statBox span,
-        .summaryBox span {
-          display: block;
-          font-size: 10px;
-          color: rgba(255, 255, 255, 0.64);
-          margin-bottom: 4px;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-          font-weight: 800;
-        }
-
-        .statBox strong,
-        .summaryBox strong {
-          color: #fff;
-          font-size: 13px;
-        }
-
-        .emptyLeader {
-          min-height: 110px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 18px;
-          background: rgba(0, 0, 0, 0.3);
-          color: rgba(255, 255, 255, 0.86);
-          font-weight: 900;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 18px;
         }
 
         .field {
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          margin-bottom: 8px;
+          gap: 8px;
         }
 
         .field label {
+          font-size: 16px;
           font-weight: 900;
-          font-size: 13px;
           color: #fff;
         }
 
         .field select {
           width: 100%;
-          min-height: 42px;
-          border-radius: 14px;
-          border: 1px solid rgba(255, 190, 60, 0.12);
+          min-height: 56px;
+          border-radius: 18px;
+          border: 1px solid rgba(255, 190, 60, 0.14);
           background: rgba(0, 0, 0, 0.42);
-          backdrop-filter: blur(6px);
           color: #fff;
-          padding: 0 12px;
+          padding: 0 18px;
           outline: none;
+        }
+
+        .emptyBox {
+          margin-top: 18px;
+          min-height: 110px;
+          border-radius: 22px;
+          display: grid;
+          place-items: center;
+          background: rgba(0, 0, 0, 0.24);
+          border: 1px solid rgba(255, 190, 60, 0.08);
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 18px;
+          font-weight: 700;
+          text-align: center;
+          padding: 20px;
+        }
+
+        .resultCard {
+          margin-top: 18px;
+        }
+
+        .athleteHead {
+          display: flex;
+          justify-content: space-between;
+          gap: 18px;
+          padding: 20px;
+          border-radius: 22px;
+          background: rgba(0, 0, 0, 0.24);
+          border: 1px solid rgba(255, 190, 60, 0.08);
+        }
+
+        .miniLabel {
+          display: block;
+          margin-bottom: 8px;
           font-size: 13px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #f5cf72;
+        }
+
+        .athleteHead h2 {
+          margin: 0;
+          color: #fff;
+          font-size: 36px;
+          font-weight: 1000;
+        }
+
+        .headMeta {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 16px;
+          min-width: 520px;
+        }
+
+        .headMeta span {
+          display: block;
+          margin-bottom: 6px;
+          color: #f5cf72;
+          font-size: 12px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .headMeta strong {
+          color: #fff;
+          font-size: 18px;
+        }
+
+        .marksGrid {
+          margin-top: 18px;
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+        }
+
+        .markCard {
+          padding: 20px;
+          border-radius: 22px;
+          background: rgba(0, 0, 0, 0.24);
+          border: 1px solid rgba(255, 190, 60, 0.08);
+        }
+
+        .markCard span {
+          display: block;
+          margin-bottom: 8px;
+          color: #f5cf72;
+          font-size: 13px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .markCard strong {
+          color: #fff;
+          font-size: 34px;
+          font-weight: 1000;
+        }
+
+        .totalCard {
+          background: linear-gradient(180deg, rgba(247, 217, 121, 0.14), rgba(223, 168, 38, 0.14));
+          border: 1px solid rgba(247, 217, 121, 0.18);
+        }
+
+        .rankingBlock {
+          margin-top: 18px;
+          padding: 20px;
+          border-radius: 22px;
+          background: rgba(0, 0, 0, 0.24);
+          border: 1px solid rgba(255, 190, 60, 0.08);
+        }
+
+        .rankingBlock h3 {
+          margin: 0 0 14px;
+          color: #fff;
+          font-size: 28px;
+          font-weight: 1000;
         }
 
         .tableWrap {
@@ -683,18 +645,13 @@ export default function ResultadosPage() {
           width: 100%;
           border-collapse: separate;
           border-spacing: 0;
-          table-layout: fixed;
-          min-width: 1180px;
         }
 
         thead th {
-          position: sticky;
-          top: 0;
-          z-index: 2;
           text-align: left;
-          padding: 14px 10px;
+          padding: 16px 14px;
           color: #f7d77a;
-          font-size: 14px;
+          font-size: 15px;
           font-weight: 1000;
           background:
             linear-gradient(
@@ -703,137 +660,40 @@ export default function ResultadosPage() {
               rgba(42, 22, 2, 0.86),
               rgba(10, 16, 28, 0.84)
             );
-          backdrop-filter: blur(10px) saturate(140%);
-          border-bottom: 1px solid rgba(255, 220, 140, 0.12);
-          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
         }
 
         tbody td {
-          padding: 12px 10px;
+          padding: 14px 12px;
           border-top: 1px solid rgba(255, 255, 255, 0.045);
-          vertical-align: middle;
           color: rgba(255, 255, 255, 0.96);
-          font-size: 13px;
+          font-size: 14px;
           background: rgba(0, 0, 0, 0.18);
         }
 
-        tbody tr:hover {
-          background: rgba(255, 166, 0, 0.035);
+        .activeRow td {
+          background: rgba(247, 217, 121, 0.12);
         }
 
-        .colRank {
-          width: 64px;
-        }
-
-        .colFoto {
-          width: 84px;
-        }
-
-        .rankCell {
-          font-weight: 1000;
-          color: #f7d77a;
-        }
-
-        .nameCell,
-        .bestCell,
-        .totalCell,
-        .pointsCell {
-          font-weight: 900;
-        }
-
-        .miniFoto {
-          width: 46px;
-          height: 46px;
-          border-radius: 14px;
-          object-fit: cover;
-          background: rgba(16, 16, 16, 0.45);
-          border: 1px solid rgba(255, 196, 60, 0.1);
-        }
-
-        .miniFotoEmpty {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: rgba(255, 255, 255, 0.76);
-          font-size: 11px;
-          font-weight: 900;
-        }
-
-        .attemptInput {
-          width: 100%;
-          min-height: 38px;
-          border-radius: 12px;
-          border: 1px solid rgba(255, 190, 60, 0.1);
-          background: rgba(0, 0, 0, 0.36);
-          color: #fff;
-          padding: 0 10px;
-          outline: none;
-          font-size: 13px;
-        }
-
-        .attemptInput:focus {
-          border-color: rgba(255, 196, 60, 0.24);
-          background: rgba(0, 0, 0, 0.5);
-        }
-
-        .emptyCell {
-          text-align: center;
-          padding: 56px 20px !important;
-          font-size: 18px;
-          color: rgba(255, 220, 150, 0.96);
-          font-weight: 1000;
-          background: rgba(0, 0, 0, 0.16);
-        }
-
-        @media (max-width: 1200px) {
-          .topGrid {
+        @media (max-width: 1100px) {
+          .filtersGrid,
+          .marksGrid,
+          .headMeta {
             grid-template-columns: 1fr;
+          }
+
+          .athleteHead {
+            flex-direction: column;
           }
         }
 
         @media (max-width: 760px) {
           .hero {
             flex-direction: column;
-            align-items: flex-start;
-            gap: 10px;
           }
 
-          .logoBox {
-            width: 54px;
-            height: 54px;
-          }
-
-          .logoImg {
-            width: 38px;
-            height: 38px;
-          }
-
-          .heroText h1 {
-            font-size: clamp(28px, 8vw, 44px);
-          }
-
-          .heroText p {
-            font-size: 13px;
-          }
-
-          .panel {
-            padding: 12px;
-            border-radius: 20px;
-          }
-
-          .panel h2 {
-            font-size: 26px;
-          }
-
-          .leaderCard,
-          .leaderStats,
-          .summaryGrid {
-            grid-template-columns: 1fr;
-          }
-
-          .leaderPhoto {
-            width: 110px;
-            height: 110px;
+          .heroActions {
+            width: 100%;
+            justify-content: space-between;
           }
         }
       `}</style>

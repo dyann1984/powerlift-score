@@ -9,6 +9,7 @@ function SplashScreen() {
   return (
     <div className="powerlift-splash">
       <div className="powerlift-splash-overlay" />
+
       <div className="powerlift-splash-content">
         <Image
           src="/jaguar-logo.png"
@@ -18,6 +19,7 @@ function SplashScreen() {
           className="powerlift-splash-logo"
           priority
         />
+
         <p className="powerlift-splash-kicker">COMPETENCIA</p>
         <h1 className="powerlift-splash-title">POWERLIFT TLALMANALCO</h1>
         <p className="powerlift-splash-subtitle">
@@ -59,10 +61,21 @@ function HomeContent() {
               </div>
             </div>
 
-            <div className="powerlift-grid">
+            {/* 🔥 GRID CENTRADO Y LIMPIO */}
+            <div
+              className="powerlift-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(280px, 320px))",
+                justifyContent: "center",
+                gap: "28px",
+                width: "100%",
+                marginTop: "40px",
+              }}
+            >
               <article className="powerlift-card">
-                <span className="powerlift-label">Registro</span>
-                <h3>Atletas</h3>
+                <h3>Registro</h3>
                 <p>Alta de competidores</p>
                 <Link href="/registro" className="powerlift-button">
                   Entrar
@@ -70,28 +83,17 @@ function HomeContent() {
               </article>
 
               <article className="powerlift-card">
-                <span className="powerlift-label">Competencia</span>
-                <h3>Jueces</h3>
-                <p>Panel de calificación</p>
-                <Link href="/jueces" className="powerlift-button">
+                <h3>Competencia</h3>
+                <p>Captura de intentos</p>
+                <Link href="/competencia" className="powerlift-button">
                   Entrar
                 </Link>
               </article>
 
               <article className="powerlift-card">
-                <span className="powerlift-label">Resultados</span>
-                <h3>Ranking</h3>
+                <h3>Resultados</h3>
                 <p>Tabla general</p>
                 <Link href="/resultados" className="powerlift-button">
-                  Entrar
-                </Link>
-              </article>
-
-              <article className="powerlift-card">
-                <span className="powerlift-label">Control</span>
-                <h3>Admin</h3>
-                <p>Gestión del evento</p>
-                <Link href="/admin" className="powerlift-button">
                   Entrar
                 </Link>
               </article>
@@ -110,11 +112,11 @@ export default function Home() {
   useEffect(() => {
     const timer1 = setTimeout(() => {
       setHideSplash(true);
-    }, 2600);
+    }, 2500);
 
     const timer2 = setTimeout(() => {
       setShowSplash(false);
-    }, 3200);
+    }, 3000);
 
     return () => {
       clearTimeout(timer1);
@@ -124,7 +126,9 @@ export default function Home() {
 
   return (
     <>
-      <div className={`powerlift-page ${showSplash ? "is-loading" : "is-ready"}`}>
+      <div
+        className={`powerlift-page ${showSplash ? "is-loading" : "is-ready"}`}
+      >
         <HomeContent />
       </div>
 

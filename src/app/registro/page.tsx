@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 type Sexo = "Masculino" | "Femenino";
 
@@ -12,10 +13,8 @@ type Athlete = {
   peso: number;
   categoria: string;
   club: string;
-  foto?: string;
+  created_at?: string;
 };
-
-const STORAGE_KEY = "powerlift-athletes";
 
 function getCategoria(peso: number, sexo: Sexo) {
   if (!peso || peso <= 0) return "—";
@@ -41,61 +40,91 @@ function getCategoria(peso: number, sexo: Sexo) {
   return "+84 kg";
 }
 
+function formatError(error: unknown) {
+  if (!error) return "Error desconocido";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+
+  if (typeof error === "object") {
+    const maybe = error as {
+      message?: string;
+      details?: string;
+      hint?: string;
+      code?: string;
+      status?: number;
+      statusText?: string;
+    };
+
+    return [
+      maybe.message,
+      maybe.details,
+      maybe.hint,
+      maybe.status ? `status: ${maybe.status}` : "",
+      maybe.statusText ?? "",
+      maybe.code ? `(code: ${maybe.code})` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
+  }
+
+  return "Error desconocido";
+}
+
 export default function RegistroPage() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [nombre, setNombre] = useState("");
   const [sexo, setSexo] = useState<Sexo>("Masculino");
   const [peso, setPeso] = useState("");
   const [club, setClub] = useState("");
-  const [foto, setFoto] = useState<string>("");
-  const [fotoNombre, setFotoNombre] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as Athlete[];
-        if (Array.isArray(parsed)) setAthletes(parsed);
-      }
-    } catch {
-      setAthletes([]);
-    }
-  }, []);
-
-  const saveAthletes = (next: Athlete[]) => {
-    setAthletes(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  };
+  const [loading, setLoading] = useState(false);
+  const [loadingAthletes, setLoadingAthletes] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const categoriaActual = useMemo(() => {
     return getCategoria(Number(peso), sexo);
   }, [peso, sexo]);
+
+  const cargarAthletes = async () => {
+    setLoadingAthletes(true);
+    setErrorMsg("");
+
+    try {
+      const { data, error } = await supabase
+        .from("athletes")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.warn("Supabase select athletes:", error);
+        setErrorMsg(`Error al cargar atletas: ${formatError(error)}`);
+        setAthletes([]);
+        return;
+      }
+
+      setAthletes((data as Athlete[]) || []);
+    } catch (error) {
+      console.warn("Catch cargarAthletes:", error);
+      setErrorMsg(`Error al cargar atletas: ${formatError(error)}`);
+      setAthletes([]);
+    } finally {
+      setLoadingAthletes(false);
+    }
+  };
+
+  useEffect(() => {
+    void cargarAthletes();
+  }, []);
 
   const limpiarFormulario = () => {
     setNombre("");
     setSexo("Masculino");
     setPeso("");
     setClub("");
-    setFoto("");
-    setFotoNombre("");
     setEditingId(null);
   };
 
-  const handleFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setFotoNombre(file.name);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFoto(String(reader.result || ""));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     const pesoNumero = Number(peso);
 
     if (!nombre.trim()) {
@@ -108,24 +137,53 @@ export default function RegistroPage() {
       return;
     }
 
-    const nuevoRegistro: Athlete = {
-      id: editingId ?? crypto.randomUUID(),
+    setLoading(true);
+    setErrorMsg("");
+
+    const payload = {
       nombre: nombre.trim(),
       sexo,
       peso: pesoNumero,
       categoria: getCategoria(pesoNumero, sexo),
       club: club.trim(),
-      foto: foto || undefined,
     };
 
-    if (editingId) {
-      const updated = athletes.map((a) => (a.id === editingId ? nuevoRegistro : a));
-      saveAthletes(updated);
-    } else {
-      saveAthletes([...athletes, nuevoRegistro]);
-    }
+    try {
+      if (editingId) {
+        const { error } = await supabase
+          .from("athletes")
+          .update(payload)
+          .eq("id", editingId);
 
-    limpiarFormulario();
+        if (error) {
+          console.warn("Supabase update athlete:", error);
+          const msg = `Error al actualizar atleta: ${formatError(error)}`;
+          setErrorMsg(msg);
+          alert(msg);
+          return;
+        }
+      } else {
+        const { error } = await supabase.from("athletes").insert([payload]);
+
+        if (error) {
+          console.warn("Supabase insert athlete:", error);
+          const msg = `Error al guardar atleta: ${formatError(error)}`;
+          setErrorMsg(msg);
+          alert(msg);
+          return;
+        }
+      }
+
+      await cargarAthletes();
+      limpiarFormulario();
+    } catch (error) {
+      console.warn("General guardar athlete:", error);
+      const msg = `Ocurrió un error inesperado: ${formatError(error)}`;
+      setErrorMsg(msg);
+      alert(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEditar = (athlete: Athlete) => {
@@ -133,20 +191,39 @@ export default function RegistroPage() {
     setNombre(athlete.nombre);
     setSexo(athlete.sexo);
     setPeso(String(athlete.peso));
-    setClub(athlete.club);
-    setFoto(athlete.foto || "");
-    setFotoNombre(athlete.foto ? "Foto cargada" : "");
+    setClub(athlete.club || "");
+    setErrorMsg("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleEliminar = (id: string) => {
+  const handleEliminar = async (id: string) => {
     const ok = window.confirm("¿Eliminar atleta?");
     if (!ok) return;
 
-    const updated = athletes.filter((a) => a.id !== id);
-    saveAthletes(updated);
+    setErrorMsg("");
 
-    if (editingId === id) limpiarFormulario();
+    try {
+      const { error } = await supabase.from("athletes").delete().eq("id", id);
+
+      if (error) {
+        console.warn("Supabase delete athlete:", error);
+        const msg = `Error al eliminar atleta: ${formatError(error)}`;
+        setErrorMsg(msg);
+        alert(msg);
+        return;
+      }
+
+      await cargarAthletes();
+
+      if (editingId === id) {
+        limpiarFormulario();
+      }
+    } catch (error) {
+      console.warn("General delete athlete:", error);
+      const msg = `Ocurrió un error inesperado al eliminar: ${formatError(error)}`;
+      setErrorMsg(msg);
+      alert(msg);
+    }
   };
 
   return (
@@ -159,13 +236,20 @@ export default function RegistroPage() {
         <header className="hero">
           <div className="heroBrand">
             <div className="logoBox">
-              <img src="/jaguar-logo.png" alt="Logo Powerlifting" className="logoImg" />
+              <img
+                src="/jaguar-logo.png"
+                alt="Logo Powerlifting"
+                className="logoImg"
+              />
             </div>
 
             <div className="heroText">
               <p className="eyebrow">REGISTRO</p>
               <h1>Atletas del campeonato</h1>
-              <p>Alta de competidores con foto, categoría automática y control visual profesional</p>
+              <p>
+                Alta de competidores con categoría automática y control visual
+                profesional
+              </p>
             </div>
           </div>
 
@@ -174,25 +258,13 @@ export default function RegistroPage() {
           </Link>
         </header>
 
+        {errorMsg && <div className="errorBox">{errorMsg}</div>}
+
         <section className="mainGrid">
           <article className="panel formPanel">
             <div className="panelGlow" />
             <div className="pill">NUEVO ATLETA</div>
             <h2>{editingId ? "Editar atleta" : "Registro"}</h2>
-
-            <div className="fotoRow">
-              <div className="fotoPreview">
-                {foto ? <img src={foto} alt="Preview" /> : <span>Sin foto</span>}
-              </div>
-
-              <div className="fotoControls">
-                <label className="uploadBtn">
-                  Subir foto
-                  <input type="file" accept="image/*" onChange={handleFoto} hidden />
-                </label>
-                <small>{fotoNombre || "No se ha seleccionado archivo"}</small>
-              </div>
-            </div>
 
             <div className="field">
               <label>Nombre</label>
@@ -205,7 +277,10 @@ export default function RegistroPage() {
 
             <div className="field">
               <label>Sexo</label>
-              <select value={sexo} onChange={(e) => setSexo(e.target.value as Sexo)}>
+              <select
+                value={sexo}
+                onChange={(e) => setSexo(e.target.value as Sexo)}
+              >
                 <option value="Masculino">Masculino</option>
                 <option value="Femenino">Femenino</option>
               </select>
@@ -236,12 +311,25 @@ export default function RegistroPage() {
             </div>
 
             <div className="actions">
-              <button className="primaryBtn" onClick={handleGuardar}>
-                {editingId ? "Actualizar atleta" : "Guardar atleta"}
+              <button
+                className="primaryBtn"
+                onClick={handleGuardar}
+                disabled={loading}
+                type="button"
+              >
+                {loading
+                  ? "Guardando..."
+                  : editingId
+                    ? "Actualizar atleta"
+                    : "Guardar atleta"}
               </button>
 
               {editingId && (
-                <button className="ghostBtn" onClick={limpiarFormulario}>
+                <button
+                  className="ghostBtn"
+                  onClick={limpiarFormulario}
+                  type="button"
+                >
                   Cancelar edición
                 </button>
               )}
@@ -257,7 +345,6 @@ export default function RegistroPage() {
               <table>
                 <thead>
                   <tr>
-                    <th className="colFoto">Foto</th>
                     <th>Nombre</th>
                     <th>Sexo</th>
                     <th>Peso</th>
@@ -268,22 +355,21 @@ export default function RegistroPage() {
                 </thead>
 
                 <tbody>
-                  {athletes.length === 0 ? (
+                  {loadingAthletes ? (
                     <tr>
-                      <td colSpan={7} className="emptyCell">
+                      <td colSpan={6} className="emptyCell">
+                        Cargando atletas...
+                      </td>
+                    </tr>
+                  ) : athletes.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="emptyCell">
                         ⚠️ Sin atletas registrados
                       </td>
                     </tr>
                   ) : (
                     athletes.map((a) => (
                       <tr key={a.id}>
-                        <td className="colFoto">
-                          {a.foto ? (
-                            <img src={a.foto} alt={a.nombre} className="miniFoto" />
-                          ) : (
-                            <div className="miniFoto miniFotoEmpty">FOTO</div>
-                          )}
-                        </td>
                         <td className="nombreCell">{a.nombre}</td>
                         <td>{a.sexo}</td>
                         <td>{a.peso} kg</td>
@@ -291,10 +377,18 @@ export default function RegistroPage() {
                         <td>{a.club || "—"}</td>
                         <td className="colAcciones">
                           <div className="rowActions">
-                            <button className="editBtn" onClick={() => handleEditar(a)}>
+                            <button
+                              className="editBtn"
+                              onClick={() => handleEditar(a)}
+                              type="button"
+                            >
                               Editar
                             </button>
-                            <button className="deleteBtn" onClick={() => handleEliminar(a.id)}>
+                            <button
+                              className="deleteBtn"
+                              onClick={() => handleEliminar(a.id)}
+                              type="button"
+                            >
                               Eliminar
                             </button>
                           </div>
@@ -363,6 +457,17 @@ export default function RegistroPage() {
           flex-direction: column;
         }
 
+        .errorBox {
+          margin: 0 4px 14px;
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: rgba(140, 20, 20, 0.5);
+          border: 1px solid rgba(255, 110, 110, 0.35);
+          color: #fff;
+          font-weight: 700;
+          backdrop-filter: blur(8px);
+        }
+
         .hero {
           display: flex;
           align-items: flex-start;
@@ -385,7 +490,6 @@ export default function RegistroPage() {
           border-radius: 22px;
           background: rgba(10, 10, 10, 0.34);
           backdrop-filter: blur(10px) saturate(135%);
-          -webkit-backdrop-filter: blur(10px) saturate(135%);
           border: 1px solid rgba(255, 196, 60, 0.16);
           display: grid;
           place-items: center;
@@ -421,9 +525,6 @@ export default function RegistroPage() {
           line-height: 0.95;
           font-weight: 1000;
           color: #fff7df;
-          text-shadow:
-            0 0 10px rgba(255, 190, 60, 0.08),
-            0 0 18px rgba(255, 130, 0, 0.04);
         }
 
         .heroText p {
@@ -438,7 +539,6 @@ export default function RegistroPage() {
           border-radius: 16px;
           background: rgba(10, 10, 10, 0.34);
           backdrop-filter: blur(10px) saturate(140%);
-          -webkit-backdrop-filter: blur(10px) saturate(140%);
           border: 1px solid rgba(255, 255, 255, 0.08);
           display: inline-flex;
           align-items: center;
@@ -446,13 +546,7 @@ export default function RegistroPage() {
           font-weight: 900;
           color: #fff;
           white-space: nowrap;
-          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
-          transition: all 0.2s ease;
-        }
-
-        .volverBtn:hover {
-          transform: translateY(-1px);
-          border-color: rgba(255, 196, 60, 0.22);
+          text-decoration: none;
         }
 
         .mainGrid {
@@ -472,7 +566,6 @@ export default function RegistroPage() {
             rgba(0, 0, 0, 0.34)
           );
           backdrop-filter: blur(12px) saturate(140%);
-          -webkit-backdrop-filter: blur(12px) saturate(140%);
           border: 1px solid rgba(255, 190, 60, 0.16);
           border-radius: 28px;
           padding: 18px;
@@ -501,7 +594,6 @@ export default function RegistroPage() {
 
         .pill,
         h2,
-        .fotoRow,
         .field,
         .actions,
         .tableWrap {
@@ -530,65 +622,6 @@ export default function RegistroPage() {
           font-weight: 1000;
         }
 
-        .fotoRow {
-          display: flex;
-          gap: 14px;
-          align-items: flex-start;
-          margin-bottom: 14px;
-        }
-
-        .fotoPreview {
-          width: 104px;
-          height: 104px;
-          border-radius: 22px;
-          overflow: hidden;
-          background: rgba(0, 0, 0, 0.46);
-          backdrop-filter: blur(8px);
-          border: 1px solid rgba(255, 196, 60, 0.12);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: rgba(255, 255, 255, 0.88);
-          font-weight: 900;
-          flex-shrink: 0;
-        }
-
-        .fotoPreview img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .fotoControls {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          min-width: 0;
-        }
-
-        .uploadBtn {
-          min-height: 56px;
-          padding: 0 18px;
-          border-radius: 18px;
-          background: linear-gradient(180deg, #f7d979 0%, #e5b53b 100%);
-          color: #111;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 1000;
-          cursor: pointer;
-          box-shadow:
-            0 12px 22px rgba(0, 0, 0, 0.24),
-            0 0 12px rgba(255, 166, 0, 0.06);
-        }
-
-        .fotoControls small {
-          color: rgba(255, 255, 255, 0.74);
-          font-size: 13px;
-          word-break: break-word;
-        }
-
         .field {
           display: flex;
           flex-direction: column;
@@ -610,27 +643,9 @@ export default function RegistroPage() {
           border-radius: 18px;
           border: 1px solid rgba(255, 190, 60, 0.14);
           background: rgba(0, 0, 0, 0.42);
-          backdrop-filter: blur(6px);
-          -webkit-backdrop-filter: blur(6px);
           color: #fff;
           padding: 0 16px;
           outline: none;
-          box-shadow: inset 0 0 10px rgba(255, 166, 0, 0.03);
-          transition: all 0.2s ease;
-        }
-
-        .field input:focus,
-        .field select:focus {
-          border-color: rgba(255, 196, 60, 0.24);
-          background: rgba(0, 0, 0, 0.5);
-          transform: translateY(-1px);
-          box-shadow:
-            0 0 0 1px rgba(255, 196, 60, 0.04),
-            0 0 14px rgba(255, 140, 0, 0.04);
-        }
-
-        .field input::placeholder {
-          color: rgba(255, 255, 255, 0.34);
         }
 
         .readonlyBox {
@@ -656,29 +671,23 @@ export default function RegistroPage() {
           font-weight: 1000;
           border: none;
           cursor: pointer;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
         .primaryBtn {
           flex: 1;
           background: linear-gradient(180deg, #f7d979 0%, #dfa826 100%);
           color: #111;
-          box-shadow:
-            0 12px 20px rgba(0, 0, 0, 0.26),
-            0 0 12px rgba(255, 166, 0, 0.05);
+        }
+
+        .primaryBtn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
         }
 
         .ghostBtn {
           background: rgba(10, 10, 10, 0.38);
           color: #f6d878;
           border: 1px solid rgba(255, 196, 60, 0.14);
-        }
-
-        .primaryBtn:hover,
-        .ghostBtn:hover,
-        .editBtn:hover,
-        .deleteBtn:hover {
-          transform: translateY(-1px);
         }
 
         .tableWrap {
@@ -704,7 +713,6 @@ export default function RegistroPage() {
           color: #f7d77a;
           font-size: 16px;
           font-weight: 1000;
-          letter-spacing: 0.01em;
           background:
             linear-gradient(
               90deg,
@@ -712,43 +720,14 @@ export default function RegistroPage() {
               rgba(42, 22, 2, 0.86),
               rgba(10, 16, 28, 0.84)
             );
-          backdrop-filter: blur(10px) saturate(140%);
-          -webkit-backdrop-filter: blur(10px) saturate(140%);
-          border-bottom: 1px solid rgba(255, 220, 140, 0.12);
-          box-shadow:
-            inset 0 -1px 0 rgba(255, 255, 255, 0.03),
-            0 8px 18px rgba(0, 0, 0, 0.2);
-          text-shadow: 0 0 6px rgba(255, 180, 60, 0.08);
-        }
-
-        thead th:first-child {
-          border-top-left-radius: 18px;
-        }
-
-        thead th:last-child {
-          border-top-right-radius: 18px;
-        }
-
-        tbody tr {
-          transition: background 0.2s ease;
-        }
-
-        tbody tr:hover {
-          background: rgba(255, 166, 0, 0.035);
         }
 
         tbody td {
           padding: 14px 12px;
           border-top: 1px solid rgba(255, 255, 255, 0.045);
-          vertical-align: middle;
           color: rgba(255, 255, 255, 0.96);
-          word-break: break-word;
           font-size: 14px;
           background: rgba(0, 0, 0, 0.18);
-        }
-
-        .colFoto {
-          width: 92px;
         }
 
         .colAcciones {
@@ -756,24 +735,6 @@ export default function RegistroPage() {
         }
 
         .nombreCell {
-          font-weight: 900;
-        }
-
-        .miniFoto {
-          width: 50px;
-          height: 50px;
-          border-radius: 14px;
-          object-fit: cover;
-          background: rgba(16, 16, 16, 0.45);
-          border: 1px solid rgba(255, 196, 60, 0.1);
-        }
-
-        .miniFotoEmpty {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: rgba(255, 255, 255, 0.76);
-          font-size: 11px;
           font-weight: 900;
         }
 
@@ -797,13 +758,11 @@ export default function RegistroPage() {
         .editBtn {
           background: linear-gradient(180deg, #f2d170 0%, #ddaa2e 100%);
           color: #161616;
-          box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
         }
 
         .deleteBtn {
           background: linear-gradient(180deg, #ff6f61 0%, #db433b 100%);
           color: white;
-          box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
         }
 
         .emptyCell {
@@ -815,93 +774,25 @@ export default function RegistroPage() {
           background: rgba(0, 0, 0, 0.16);
         }
 
-        @media (max-width: 1280px) {
-          .heroText h1 {
-            font-size: clamp(34px, 3.8vw, 60px);
-          }
-
-          .mainGrid {
-            grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
-          }
-
-          .panel h2 {
-            font-size: clamp(28px, 2.2vw, 44px);
-          }
-        }
-
         @media (max-width: 1100px) {
-          .registro-wrap {
-            min-height: auto;
-          }
-
           .mainGrid {
             grid-template-columns: 1fr;
-          }
-
-          .tableWrap {
-            overflow-x: auto;
           }
 
           table {
             min-width: 900px;
             table-layout: auto;
           }
-
-          .formPanel,
-          .tablePanel {
-            min-height: auto;
-          }
         }
 
         @media (max-width: 760px) {
-          .registro-page {
-            padding: 10px;
-          }
-
           .hero {
             flex-direction: column;
             align-items: flex-start;
-            gap: 12px;
-          }
-
-          .heroBrand {
-            align-items: flex-start;
-          }
-
-          .logoBox {
-            width: 72px;
-            height: 72px;
-          }
-
-          .logoImg {
-            width: 54px;
-            height: 54px;
-          }
-
-          .heroText h1 {
-            font-size: clamp(34px, 10vw, 50px);
-          }
-
-          .heroText p {
-            font-size: 15px;
           }
 
           .panel {
             padding: 16px;
-            border-radius: 22px;
-          }
-
-          .panel h2 {
-            font-size: 30px;
-          }
-
-          .fotoRow {
-            flex-direction: column;
-          }
-
-          .fotoPreview {
-            width: 90px;
-            height: 90px;
           }
 
           .actions {
