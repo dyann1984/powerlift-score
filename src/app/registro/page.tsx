@@ -13,61 +13,14 @@ type Athlete = {
   peso: number;
   categoria: string;
   club: string;
-  created_at?: string;
+  foto_url?: string | null;
 };
 
-function getCategoria(peso: number, sexo: Sexo) {
+function getCategoria(peso: number) {
   if (!peso || peso <= 0) return "—";
-
-  if (sexo === "Masculino") {
-    if (peso <= 59) return "59 kg";
-    if (peso <= 66) return "66 kg";
-    if (peso <= 74) return "74 kg";
-    if (peso <= 83) return "83 kg";
-    if (peso <= 93) return "93 kg";
-    if (peso <= 105) return "105 kg";
-    if (peso <= 120) return "120 kg";
-    return "+120 kg";
-  }
-
-  if (peso <= 47) return "47 kg";
-  if (peso <= 52) return "52 kg";
-  if (peso <= 57) return "57 kg";
-  if (peso <= 63) return "63 kg";
-  if (peso <= 69) return "69 kg";
-  if (peso <= 76) return "76 kg";
-  if (peso <= 84) return "84 kg";
-  return "+84 kg";
-}
-
-function formatError(error: unknown) {
-  if (!error) return "Error desconocido";
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-
-  if (typeof error === "object") {
-    const maybe = error as {
-      message?: string;
-      details?: string;
-      hint?: string;
-      code?: string;
-      status?: number;
-      statusText?: string;
-    };
-
-    return [
-      maybe.message,
-      maybe.details,
-      maybe.hint,
-      maybe.status ? `status: ${maybe.status}` : "",
-      maybe.statusText ?? "",
-      maybe.code ? `(code: ${maybe.code})` : "",
-    ]
-      .filter(Boolean)
-      .join(" | ");
-  }
-
-  return "Error desconocido";
+  if (peso >= 50 && peso <= 70) return "50-70 kg";
+  if (peso > 70 && peso <= 90) return "70-90 kg";
+  return "Libre";
 }
 
 export default function RegistroPage() {
@@ -78,43 +31,29 @@ export default function RegistroPage() {
   const [club, setClub] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadingAthletes, setLoadingAthletes] = useState(true);
-  const [errorMsg, setErrorMsg] = useState("");
-
-  const categoriaActual = useMemo(() => {
-    return getCategoria(Number(peso), sexo);
-  }, [peso, sexo]);
 
   const cargarAthletes = async () => {
-    setLoadingAthletes(true);
-    setErrorMsg("");
+    const { data, error } = await supabase
+      .from("athletes")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    try {
-      const { data, error } = await supabase
-        .from("athletes")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.warn("Supabase select athletes:", error);
-        setErrorMsg(`Error al cargar atletas: ${formatError(error)}`);
-        setAthletes([]);
-        return;
-      }
-
-      setAthletes((data as Athlete[]) || []);
-    } catch (error) {
-      console.warn("Catch cargarAthletes:", error);
-      setErrorMsg(`Error al cargar atletas: ${formatError(error)}`);
-      setAthletes([]);
-    } finally {
-      setLoadingAthletes(false);
+    if (error) {
+      console.error("Error cargarAthletes:", error);
+      alert(error.message);
+      return;
     }
+
+    setAthletes((data as Athlete[]) || []);
   };
 
   useEffect(() => {
-    void cargarAthletes();
+    cargarAthletes();
   }, []);
+
+  const categoriaActual = useMemo(() => {
+    return getCategoria(Number(peso));
+  }, [peso]);
 
   const limpiarFormulario = () => {
     setNombre("");
@@ -138,52 +77,41 @@ export default function RegistroPage() {
     }
 
     setLoading(true);
-    setErrorMsg("");
 
     const payload = {
       nombre: nombre.trim(),
       sexo,
       peso: pesoNumero,
-      categoria: getCategoria(pesoNumero, sexo),
+      categoria: getCategoria(pesoNumero),
       club: club.trim(),
     };
 
-    try {
-      if (editingId) {
-        const { error } = await supabase
-          .from("athletes")
-          .update(payload)
-          .eq("id", editingId);
+    if (editingId) {
+      const { error } = await supabase
+        .from("athletes")
+        .update(payload)
+        .eq("id", editingId);
 
-        if (error) {
-          console.warn("Supabase update athlete:", error);
-          const msg = `Error al actualizar atleta: ${formatError(error)}`;
-          setErrorMsg(msg);
-          alert(msg);
-          return;
-        }
-      } else {
-        const { error } = await supabase.from("athletes").insert([payload]);
-
-        if (error) {
-          console.warn("Supabase insert athlete:", error);
-          const msg = `Error al guardar atleta: ${formatError(error)}`;
-          setErrorMsg(msg);
-          alert(msg);
-          return;
-        }
+      if (error) {
+        console.error(error);
+        alert("Error al actualizar atleta");
+        setLoading(false);
+        return;
       }
+    } else {
+      const { error } = await supabase.from("athletes").insert([payload]);
 
-      await cargarAthletes();
-      limpiarFormulario();
-    } catch (error) {
-      console.warn("General guardar athlete:", error);
-      const msg = `Ocurrió un error inesperado: ${formatError(error)}`;
-      setErrorMsg(msg);
-      alert(msg);
-    } finally {
-      setLoading(false);
+      if (error) {
+        console.error(error);
+        alert("Error al guardar atleta");
+        setLoading(false);
+        return;
+      }
     }
+
+    await cargarAthletes();
+    limpiarFormulario();
+    setLoading(false);
   };
 
   const handleEditar = (athlete: Athlete) => {
@@ -192,7 +120,6 @@ export default function RegistroPage() {
     setSexo(athlete.sexo);
     setPeso(String(athlete.peso));
     setClub(athlete.club || "");
-    setErrorMsg("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -200,30 +127,17 @@ export default function RegistroPage() {
     const ok = window.confirm("¿Eliminar atleta?");
     if (!ok) return;
 
-    setErrorMsg("");
+    const { error } = await supabase.from("athletes").delete().eq("id", id);
 
-    try {
-      const { error } = await supabase.from("athletes").delete().eq("id", id);
-
-      if (error) {
-        console.warn("Supabase delete athlete:", error);
-        const msg = `Error al eliminar atleta: ${formatError(error)}`;
-        setErrorMsg(msg);
-        alert(msg);
-        return;
-      }
-
-      await cargarAthletes();
-
-      if (editingId === id) {
-        limpiarFormulario();
-      }
-    } catch (error) {
-      console.warn("General delete athlete:", error);
-      const msg = `Ocurrió un error inesperado al eliminar: ${formatError(error)}`;
-      setErrorMsg(msg);
-      alert(msg);
+    if (error) {
+      console.error(error);
+      alert("Error al eliminar atleta");
+      return;
     }
+
+    await cargarAthletes();
+
+    if (editingId === id) limpiarFormulario();
   };
 
   return (
@@ -236,20 +150,13 @@ export default function RegistroPage() {
         <header className="hero">
           <div className="heroBrand">
             <div className="logoBox">
-              <img
-                src="/jaguar-logo.png"
-                alt="Logo Powerlifting"
-                className="logoImg"
-              />
+              <img src="/jaguar-logo.png" alt="Logo Powerlifting" className="logoImg" />
             </div>
 
             <div className="heroText">
               <p className="eyebrow">REGISTRO</p>
               <h1>Atletas del campeonato</h1>
-              <p>
-                Alta de competidores con categoría automática y control visual
-                profesional
-              </p>
+              <p>Alta de competidores con categoría automática y control visual profesional</p>
             </div>
           </div>
 
@@ -257,8 +164,6 @@ export default function RegistroPage() {
             ← Volver
           </Link>
         </header>
-
-        {errorMsg && <div className="errorBox">{errorMsg}</div>}
 
         <section className="mainGrid">
           <article className="panel formPanel">
@@ -277,10 +182,7 @@ export default function RegistroPage() {
 
             <div className="field">
               <label>Sexo</label>
-              <select
-                value={sexo}
-                onChange={(e) => setSexo(e.target.value as Sexo)}
-              >
+              <select value={sexo} onChange={(e) => setSexo(e.target.value as Sexo)}>
                 <option value="Masculino">Masculino</option>
                 <option value="Femenino">Femenino</option>
               </select>
@@ -311,25 +213,16 @@ export default function RegistroPage() {
             </div>
 
             <div className="actions">
-              <button
-                className="primaryBtn"
-                onClick={handleGuardar}
-                disabled={loading}
-                type="button"
-              >
+              <button className="primaryBtn" onClick={handleGuardar} disabled={loading}>
                 {loading
                   ? "Guardando..."
                   : editingId
-                    ? "Actualizar atleta"
-                    : "Guardar atleta"}
+                  ? "Actualizar atleta"
+                  : "Guardar atleta"}
               </button>
 
               {editingId && (
-                <button
-                  className="ghostBtn"
-                  onClick={limpiarFormulario}
-                  type="button"
-                >
+                <button className="ghostBtn" onClick={limpiarFormulario}>
                   Cancelar edición
                 </button>
               )}
@@ -355,13 +248,7 @@ export default function RegistroPage() {
                 </thead>
 
                 <tbody>
-                  {loadingAthletes ? (
-                    <tr>
-                      <td colSpan={6} className="emptyCell">
-                        Cargando atletas...
-                      </td>
-                    </tr>
-                  ) : athletes.length === 0 ? (
+                  {athletes.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="emptyCell">
                         ⚠️ Sin atletas registrados
@@ -373,22 +260,14 @@ export default function RegistroPage() {
                         <td className="nombreCell">{a.nombre}</td>
                         <td>{a.sexo}</td>
                         <td>{a.peso} kg</td>
-                        <td>{a.categoria}</td>
+                        <td>{getCategoria(Number(a.peso))}</td>
                         <td>{a.club || "—"}</td>
                         <td className="colAcciones">
                           <div className="rowActions">
-                            <button
-                              className="editBtn"
-                              onClick={() => handleEditar(a)}
-                              type="button"
-                            >
+                            <button className="editBtn" onClick={() => handleEditar(a)}>
                               Editar
                             </button>
-                            <button
-                              className="deleteBtn"
-                              onClick={() => handleEliminar(a.id)}
-                              type="button"
-                            >
+                            <button className="deleteBtn" onClick={() => handleEliminar(a.id)}>
                               Eliminar
                             </button>
                           </div>
@@ -457,17 +336,6 @@ export default function RegistroPage() {
           flex-direction: column;
         }
 
-        .errorBox {
-          margin: 0 4px 14px;
-          padding: 14px 16px;
-          border-radius: 16px;
-          background: rgba(140, 20, 20, 0.5);
-          border: 1px solid rgba(255, 110, 110, 0.35);
-          color: #fff;
-          font-weight: 700;
-          backdrop-filter: blur(8px);
-        }
-
         .hero {
           display: flex;
           align-items: flex-start;
@@ -490,6 +358,7 @@ export default function RegistroPage() {
           border-radius: 22px;
           background: rgba(10, 10, 10, 0.34);
           backdrop-filter: blur(10px) saturate(135%);
+          -webkit-backdrop-filter: blur(10px) saturate(135%);
           border: 1px solid rgba(255, 196, 60, 0.16);
           display: grid;
           place-items: center;
@@ -539,6 +408,7 @@ export default function RegistroPage() {
           border-radius: 16px;
           background: rgba(10, 10, 10, 0.34);
           backdrop-filter: blur(10px) saturate(140%);
+          -webkit-backdrop-filter: blur(10px) saturate(140%);
           border: 1px solid rgba(255, 255, 255, 0.08);
           display: inline-flex;
           align-items: center;
@@ -546,7 +416,6 @@ export default function RegistroPage() {
           font-weight: 900;
           color: #fff;
           white-space: nowrap;
-          text-decoration: none;
         }
 
         .mainGrid {
@@ -566,6 +435,7 @@ export default function RegistroPage() {
             rgba(0, 0, 0, 0.34)
           );
           backdrop-filter: blur(12px) saturate(140%);
+          -webkit-backdrop-filter: blur(12px) saturate(140%);
           border: 1px solid rgba(255, 190, 60, 0.16);
           border-radius: 28px;
           padding: 18px;
@@ -677,11 +547,6 @@ export default function RegistroPage() {
           flex: 1;
           background: linear-gradient(180deg, #f7d979 0%, #dfa826 100%);
           color: #111;
-        }
-
-        .primaryBtn:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
         }
 
         .ghostBtn {

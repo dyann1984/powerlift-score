@@ -1,614 +1,566 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+
+type Sexo = "Masculino" | "Femenino";
 
 type Athlete = {
   id: string;
   nombre: string;
-  sexo: "Masculino" | "Femenino";
+  sexo: Sexo;
   peso: number;
   categoria: string;
   club: string;
-  created_at?: string;
+  foto_url?: string | null;
 };
 
-type Movimiento = "Sentadilla" | "Press de banca" | "Peso muerto";
-type Intento = "Intento 1" | "Intento 2" | "Intento 3";
+type IntentoGuardado = {
+  id: string;
+  atletaId: string;
+  atleta: string;
+  sexo: Sexo;
+  categoria: string;
+  pesoCorporal: number;
+  club: string;
+  movimiento: string;
+  intento: string;
+  pesoIntento: number;
+  resultado: "valido" | "nulo";
+  marcaValida: number;
+  fecha: string;
+};
 
-const ejercicios: Movimiento[] = [
-  "Sentadilla",
-  "Press de banca",
-  "Peso muerto",
-];
+const RESULTS_STORAGE_KEY = "resultados_powerlift";
 
-function formatError(error: unknown) {
-  if (!error) return "Error desconocido";
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
+const movimientos = ["Sentadilla", "Press de banca", "Peso muerto"];
+const intentos = ["Intento 1", "Intento 2", "Intento 3"];
 
-  if (typeof error === "object") {
-    const maybe = error as {
-      message?: string;
-      details?: string;
-      hint?: string;
-      code?: string;
-    };
-
-    return [
-      maybe.message,
-      maybe.details,
-      maybe.hint,
-      maybe.code ? `(code: ${maybe.code})` : "",
-    ]
-      .filter(Boolean)
-      .join(" | ");
-  }
-
-  return "Error desconocido";
+function getCategoria(peso: number) {
+  if (!peso || peso <= 0) return "—";
+  if (peso >= 50 && peso <= 70) return "50-70 kg";
+  if (peso > 70 && peso <= 90) return "70-90 kg";
+  return "Libre";
 }
 
 export default function CompetenciaPage() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
-  const [loadingAthletes, setLoadingAthletes] = useState(true);
-  const [loadingSave, setLoadingSave] = useState(false);
-
-  const [errorMsg, setErrorMsg] = useState("");
-  const [okMsg, setOkMsg] = useState("");
-
-  const [movimiento, setMovimiento] = useState<Movimiento>("Sentadilla");
-  const [selectedAthleteId, setSelectedAthleteId] = useState("");
-  const [intento, setIntento] = useState<Intento>("Intento 1");
+  const [atletaId, setAtletaId] = useState("");
+  const [movimiento, setMovimiento] = useState("Sentadilla");
+  const [intento, setIntento] = useState("Intento 1");
   const [peso, setPeso] = useState("");
+  const [resultado, setResultado] = useState<"" | "valido" | "nulo">("");
 
-  const siguienteEjercicio = useMemo(() => {
-    if (movimiento === "Sentadilla") return "Press de banca";
-    if (movimiento === "Press de banca") return "Peso muerto";
-    return "Finalizado";
-  }, [movimiento]);
-
-  const atletaSeleccionado = useMemo(() => {
-    return athletes.find((a) => a.id === selectedAthleteId) || null;
-  }, [athletes, selectedAthleteId]);
-
-  const cargarAthletes = async () => {
-    setLoadingAthletes(true);
-    setErrorMsg("");
-
-    try {
+  useEffect(() => {
+    const cargarAthletes = async () => {
       const { data, error } = await supabase
         .from("athletes")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (error) {
-        setErrorMsg(`Error al cargar atletas: ${formatError(error)}`);
+        console.error("Error cargar athletes:", error);
+        alert(error.message || "Error al cargar atletas");
         setAthletes([]);
-        setSelectedAthleteId("");
         return;
       }
 
-      const rows = (data as Athlete[]) || [];
-      setAthletes(rows);
+      const lista = (data as Athlete[]) || [];
+      setAthletes(lista);
 
-      if (rows.length > 0) {
-        setSelectedAthleteId((prev) => prev || rows[0].id);
-      } else {
-        setSelectedAthleteId("");
+      if (lista.length > 0) {
+        setAtletaId((prev) => prev || lista[0].id);
       }
-    } catch (error) {
-      setErrorMsg(`Error al cargar atletas: ${formatError(error)}`);
-      setAthletes([]);
-      setSelectedAthleteId("");
-    } finally {
-      setLoadingAthletes(false);
-    }
-  };
+    };
 
-  useEffect(() => {
-    void cargarAthletes();
+    cargarAthletes();
   }, []);
 
-  const handleGuardarIntento = async () => {
-    setOkMsg("");
-    setErrorMsg("");
+  const atletaActual = athletes.find((a) => a.id === atletaId) || null;
 
-    if (!selectedAthleteId) {
-      alert("Primero selecciona un atleta");
-      return;
+  const categoriaActual = useMemo(() => {
+    return atletaActual ? getCategoria(Number(atletaActual.peso)) : "—";
+  }, [atletaActual]);
+
+  const siguienteMovimiento = useMemo(() => {
+    const index = movimientos.indexOf(movimiento);
+    if (index === -1 || index === movimientos.length - 1) {
+      return "Finaliza competencia";
     }
+    return movimientos[index + 1];
+  }, [movimiento]);
 
-    const pesoNumero = Number(peso);
+  const guardarIntento = (tipo: "valido" | "nulo") => {
+    if (!atletaActual) return;
 
-    if (!peso || Number.isNaN(pesoNumero) || pesoNumero <= 0) {
-      alert("Captura un peso válido");
-      return;
-    }
+    const pesoNumero = Number(peso || 0);
 
-    setLoadingSave(true);
+    const nuevoRegistro: IntentoGuardado = {
+      id: `${atletaActual.id}-${movimiento}-${intento}`,
+      atletaId: atletaActual.id,
+      atleta: atletaActual.nombre,
+      sexo: atletaActual.sexo,
+      categoria: getCategoria(Number(atletaActual.peso)),
+      pesoCorporal: Number(atletaActual.peso),
+      club: atletaActual.club || "",
+      movimiento,
+      intento,
+      pesoIntento: pesoNumero,
+      resultado: tipo,
+      marcaValida: tipo === "valido" ? pesoNumero : 0,
+      fecha: new Date().toISOString(),
+    };
 
-    try {
-      const payload = {
-        athlete_id: selectedAthleteId,
-        athlete_name: atletaSeleccionado?.nombre || "",
-        movimiento,
-        intento,
-        peso: pesoNumero,
-        valido: null,
-      };
+    const guardados: IntentoGuardado[] = JSON.parse(
+      localStorage.getItem(RESULTS_STORAGE_KEY) || "[]"
+    );
 
-      const { error } = await supabase.from("attempts").insert([payload]);
+    const sinDuplicado = guardados.filter(
+      (item) =>
+        !(
+          item.atletaId === nuevoRegistro.atletaId &&
+          item.movimiento === nuevoRegistro.movimiento &&
+          item.intento === nuevoRegistro.intento
+        )
+    );
 
-      if (error) {
-        setErrorMsg(`Error al guardar intento: ${formatError(error)}`);
-        return;
-      }
-
-      setOkMsg("Intento guardado correctamente");
-      setPeso("");
-    } catch (error) {
-      setErrorMsg(`Error al guardar intento: ${formatError(error)}`);
-    } finally {
-      setLoadingSave(false);
-    }
+    sinDuplicado.push(nuevoRegistro);
+    localStorage.setItem(RESULTS_STORAGE_KEY, JSON.stringify(sinDuplicado));
   };
 
-  const handleBorrarFormulario = () => {
-    setMovimiento("Sentadilla");
-    setIntento("Intento 1");
+  const marcarValido = () => {
+    if (!atletaActual) {
+      alert("Primero registra al menos un atleta");
+      return;
+    }
+
+    if (!peso) {
+      alert("Ingresa el peso");
+      return;
+    }
+
+    setResultado("valido");
+    guardarIntento("valido");
+    alert("Intento válido guardado");
+  };
+
+  const marcarNulo = () => {
+    if (!atletaActual) {
+      alert("Primero registra al menos un atleta");
+      return;
+    }
+
+    if (!peso) {
+      alert("Ingresa el peso");
+      return;
+    }
+
+    setResultado("nulo");
+    guardarIntento("nulo");
+    alert("Intento nulo guardado");
+  };
+
+  const guardarDesdeBotonPrincipal = () => {
+    if (resultado === "nulo") {
+      marcarNulo();
+      return;
+    }
+    marcarValido();
+  };
+
+  const limpiarResultados = () => {
+    const ok = confirm("¿Seguro que quieres borrar todos los resultados?");
+    if (!ok) return;
+    localStorage.removeItem(RESULTS_STORAGE_KEY);
+    setResultado("");
     setPeso("");
-    setOkMsg("");
-    setErrorMsg("");
-    setSelectedAthleteId(athletes[0]?.id || "");
+    alert("Resultados borrados");
   };
 
   return (
-    <main className="comp-page">
-      <div className="bg-image" />
-      <div className="comp-overlay" />
-      <div className="comp-noise" />
-
-      <section className="comp-wrap">
-        <header className="hero">
-          <Link href="/" className="volverBtn">
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "url('/fondo.png') center/cover no-repeat",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: "24px",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "900px",
+          background: "rgba(0, 0, 0, 0.78)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+          border: "1px solid rgba(255,180,0,0.2)",
+          borderRadius: "28px",
+          padding: "28px",
+          color: "white",
+          boxShadow: "0 0 30px rgba(255,180,0,0.22)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "16px",
+            marginBottom: "18px",
+            flexWrap: "wrap",
+          }}
+        >
+          <Link
+            href="/"
+            style={{
+              color: "#fff",
+              textDecoration: "none",
+              fontWeight: 700,
+              fontSize: "15px",
+            }}
+          >
             ← Volver al inicio
           </Link>
 
-          <h1>Competencia</h1>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "2.8rem",
+              fontWeight: 900,
+            }}
+          >
+            Competencia
+          </h1>
 
-          <button className="borrarBtn" type="button" onClick={handleBorrarFormulario}>
+          <button
+            type="button"
+            onClick={limpiarResultados}
+            style={{
+              background: "transparent",
+              color: "#ffb3b3",
+              border: "1px solid rgba(255,0,0,0.25)",
+              borderRadius: "10px",
+              padding: "8px 12px",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
             Borrar
           </button>
-        </header>
+        </div>
 
-        {errorMsg && <div className="errorBox">{errorMsg}</div>}
-        {okMsg && <div className="okBox">{okMsg}</div>}
-
-        <section className="topGrid">
-          <article className="miniCard">
-            <span className="miniLabel">Ejercicio actual</span>
-            <strong>{movimiento}</strong>
-          </article>
-
-          <article className="miniCard">
-            <span className="miniLabel">Siguiente</span>
-            <strong>{siguienteEjercicio}</strong>
-          </article>
-        </section>
-
-        <section className="mainCard">
-          <div className="panelGlow" />
-
-          <div className="pill">EJERCICIOS OFICIALES</div>
-
-          <div className="ejerciciosRow">
-            {ejercicios.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={`chip ${movimiento === item ? "chipActive" : ""}`}
-                onClick={() => setMovimiento(item)}
-              >
-                {item}
-              </button>
-            ))}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "14px",
+            marginBottom: "18px",
+          }}
+        >
+          <div style={infoCard}>
+            <div style={infoLabel}>Ejercicio actual</div>
+            <div style={infoValue}>{movimiento}</div>
           </div>
 
-          <div className="formGrid">
-            <div className="field full">
-              <label>Atleta</label>
-              <select
-                value={selectedAthleteId}
-                onChange={(e) => setSelectedAthleteId(e.target.value)}
-                disabled={loadingAthletes || athletes.length === 0}
-              >
-                {loadingAthletes ? (
-                  <option value="">Cargando atletas...</option>
-                ) : athletes.length === 0 ? (
-                  <option value="">Sin atletas registrados</option>
-                ) : (
-                  athletes.map((athlete) => (
-                    <option key={athlete.id} value={athlete.id}>
-                      {athlete.nombre} — {athlete.categoria} — {athlete.club || "Sin club"}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+          <div style={infoCard}>
+            <div style={infoLabel}>Siguiente</div>
+            <div style={infoValue}>{siguienteMovimiento}</div>
+          </div>
+        </div>
 
-            <div className="field">
-              <label>Movimiento</label>
-              <select
-                value={movimiento}
-                onChange={(e) => setMovimiento(e.target.value as Movimiento)}
-              >
-                <option value="Sentadilla">Sentadilla</option>
-                <option value="Press de banca">Press de banca</option>
-                <option value="Peso muerto">Peso muerto</option>
-              </select>
-            </div>
-
-            <div className="field">
-              <label>Intento</label>
-              <select
-                value={intento}
-                onChange={(e) => setIntento(e.target.value as Intento)}
-              >
-                <option value="Intento 1">Intento 1</option>
-                <option value="Intento 2">Intento 2</option>
-                <option value="Intento 3">Intento 3</option>
-              </select>
-            </div>
-
-            <div className="field full">
-              <label>Peso (kg)</label>
-              <input
-                type="number"
-                value={peso}
-                onChange={(e) => setPeso(e.target.value)}
-                placeholder="Ej. 200"
-              />
-            </div>
+        <div
+          style={{
+            borderRadius: "18px",
+            border: "1px solid rgba(255,180,0,0.14)",
+            background: "rgba(255,255,255,0.04)",
+            padding: "16px",
+            marginBottom: "18px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.95rem",
+              fontWeight: 800,
+              color: "#f6cf69",
+              marginBottom: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
+            Ejercicios oficiales
           </div>
 
-          {atletaSeleccionado && (
-            <div className="resumeBox">
-              <div>
-                <span>Atleta</span>
-                <strong>{atletaSeleccionado.nombre}</strong>
-              </div>
-              <div>
-                <span>Categoría</span>
-                <strong>{atletaSeleccionado.categoria}</strong>
-              </div>
-              <div>
-                <span>Club</span>
-                <strong>{atletaSeleccionado.club || "—"}</strong>
-              </div>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            {movimientos.map((item) => {
+              const activo = item === movimiento;
+
+              return (
+                <button
+                  key={item}
+                  onClick={() => setMovimiento(item)}
+                  type="button"
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: "999px",
+                    fontWeight: 700,
+                    fontSize: "0.95rem",
+                    border: activo
+                      ? "1px solid rgba(255,190,60,0.8)"
+                      : "1px solid rgba(255,255,255,0.2)",
+                    background: activo
+                      ? "linear-gradient(135deg, #ffb300, #ff7b00)"
+                      : "rgba(255,255,255,0.05)",
+                    color: activo ? "#000" : "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  {item}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <label style={label}>Atleta</label>
+        <select
+          value={atletaId}
+          onChange={(e) => {
+            setAtletaId(e.target.value);
+            setResultado("");
+          }}
+          style={input}
+          disabled={athletes.length === 0}
+        >
+          {athletes.length === 0 ? (
+            <option value="" style={{ backgroundColor: "#161616", color: "#ffffff" }}>
+              Sin atletas registrados
+            </option>
+          ) : (
+            athletes.map((item) => (
+              <option
+                key={item.id}
+                value={item.id}
+                style={{ backgroundColor: "#161616", color: "#ffffff" }}
+              >
+                {item.nombre} — {getCategoria(Number(item.peso))} — {item.club || "—"}
+              </option>
+            ))
+          )}
+        </select>
+
+        <label style={label}>Movimiento</label>
+        <select
+          value={movimiento}
+          onChange={(e) => setMovimiento(e.target.value)}
+          style={input}
+        >
+          {movimientos.map((item) => (
+            <option
+              key={item}
+              value={item}
+              style={{ backgroundColor: "#161616", color: "#ffffff" }}
+            >
+              {item}
+            </option>
+          ))}
+        </select>
+
+        <label style={label}>Intento</label>
+        <select
+          value={intento}
+          onChange={(e) => setIntento(e.target.value)}
+          style={input}
+        >
+          {intentos.map((item) => (
+            <option
+              key={item}
+              value={item}
+              style={{ backgroundColor: "#161616", color: "#ffffff" }}
+            >
+              {item}
+            </option>
+          ))}
+        </select>
+
+        <label style={label}>Peso (kg)</label>
+        <input
+          type="number"
+          placeholder="Ej. 200"
+          value={peso}
+          onChange={(e) => setPeso(e.target.value)}
+          style={input}
+        />
+
+        {atletaActual && (
+          <div
+            style={{
+              marginTop: "10px",
+              marginBottom: "18px",
+              borderRadius: "18px",
+              border: "1px solid rgba(255,180,0,0.14)",
+              background: "rgba(255,255,255,0.04)",
+              padding: "16px",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: "14px",
+            }}
+          >
+            <div>
+              <div style={miniLabel}>Atleta</div>
+              <div style={miniValue}>{atletaActual.nombre}</div>
             </div>
+            <div>
+              <div style={miniLabel}>Categoría</div>
+              <div style={miniValue}>{categoriaActual}</div>
+            </div>
+            <div>
+              <div style={miniLabel}>Club</div>
+              <div style={miniValue}>{atletaActual.club || "—"}</div>
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={guardarDesdeBotonPrincipal}
+          type="button"
+          style={{
+            width: "100%",
+            background: "linear-gradient(180deg, #f7d979 0%, #dfa826 100%)",
+            color: "#111",
+            border: "none",
+            borderRadius: "16px",
+            padding: "16px",
+            fontWeight: 900,
+            fontSize: "1.15rem",
+            cursor: "pointer",
+            marginBottom: "16px",
+          }}
+        >
+          Guardar intento
+        </button>
+
+        <div style={{ display: "flex", gap: "12px" }}>
+          <button onClick={marcarValido} style={btnValido} type="button">
+            VÁLIDO
+          </button>
+
+          <button onClick={marcarNulo} style={btnNulo} type="button">
+            NULO
+          </button>
+        </div>
+
+        <div style={resultadoBox}>
+          {athletes.length === 0 && (
+            <span style={{ color: "#ffcf7a" }}>Registra atletas primero</span>
           )}
 
-          <div className="actions">
-            <button
-              type="button"
-              className="primaryBtn"
-              onClick={handleGuardarIntento}
-              disabled={loadingSave || athletes.length === 0}
-            >
-              {loadingSave ? "Guardando..." : "Guardar intento"}
-            </button>
-          </div>
-        </section>
-      </section>
+          {athletes.length > 0 && resultado === "" && (
+            <span style={{ color: "#aaa" }}>Pendiente</span>
+          )}
 
-      <style jsx>{`
-        .comp-page {
-          position: relative;
-          min-height: 100vh;
-          padding: 24px 16px;
-          overflow: hidden;
-        }
+          {athletes.length > 0 && resultado === "valido" && (
+            <span style={{ color: "#00ff88" }}>✅ VÁLIDO {peso} kg</span>
+          )}
 
-        .bg-image {
-          position: fixed;
-          inset: 0;
-          background-image: url("/fondo.png");
-          background-size: cover;
-          background-position: center;
-          background-repeat: no-repeat;
-          filter: brightness(0.75) saturate(1);
-          transform: scale(1.02);
-        }
-
-        .comp-overlay {
-          position: fixed;
-          inset: 0;
-          background:
-            linear-gradient(rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.72)),
-            radial-gradient(circle at 20% 20%, rgba(255, 170, 0, 0.08), transparent 30%),
-            radial-gradient(circle at 80% 30%, rgba(0, 120, 255, 0.08), transparent 28%);
-        }
-
-        .comp-noise {
-          position: fixed;
-          inset: 0;
-          opacity: 0.035;
-          background-image:
-            radial-gradient(circle, rgba(255, 220, 140, 0.95) 1px, transparent 1.7px),
-            radial-gradient(circle, rgba(255, 160, 0, 0.2) 1px, transparent 2px);
-          background-size: 180px 180px, 260px 260px;
-          background-position: 0 0, 60px 90px;
-          pointer-events: none;
-        }
-
-        .comp-wrap {
-          position: relative;
-          z-index: 1;
-          width: min(100%, 760px);
-          margin: 0 auto;
-        }
-
-        .hero {
-          display: grid;
-          grid-template-columns: auto 1fr auto;
-          align-items: center;
-          gap: 16px;
-          margin-bottom: 18px;
-          padding: 24px 28px;
-          border-radius: 32px;
-          background: linear-gradient(135deg, rgba(18, 10, 4, 0.78), rgba(0, 0, 0, 0.62));
-          backdrop-filter: blur(12px) saturate(140%);
-          border: 1px solid rgba(255, 190, 60, 0.16);
-        }
-
-        .hero h1 {
-          margin: 0;
-          text-align: center;
-          font-size: clamp(42px, 5vw, 72px);
-          color: #fff7df;
-          font-weight: 1000;
-        }
-
-        .volverBtn,
-        .borrarBtn {
-          min-height: 52px;
-          padding: 0 18px;
-          border-radius: 16px;
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          background: rgba(10, 10, 10, 0.28);
-          color: #fff;
-          font-weight: 900;
-          text-decoration: none;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .borrarBtn {
-          cursor: pointer;
-          color: #ffb0b0;
-        }
-
-        .errorBox,
-        .okBox {
-          margin-bottom: 14px;
-          padding: 14px 16px;
-          border-radius: 16px;
-          font-weight: 800;
-          backdrop-filter: blur(8px);
-        }
-
-        .errorBox {
-          background: rgba(140, 20, 20, 0.5);
-          border: 1px solid rgba(255, 110, 110, 0.35);
-          color: #fff;
-        }
-
-        .okBox {
-          background: rgba(20, 120, 40, 0.38);
-          border: 1px solid rgba(90, 255, 120, 0.35);
-          color: #fff;
-        }
-
-        .topGrid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-          margin-bottom: 18px;
-        }
-
-        .miniCard,
-        .mainCard {
-          position: relative;
-          border-radius: 28px;
-          background: linear-gradient(135deg, rgba(18, 10, 4, 0.72), rgba(0, 0, 0, 0.52));
-          backdrop-filter: blur(12px) saturate(140%);
-          border: 1px solid rgba(255, 190, 60, 0.16);
-          box-shadow:
-            0 18px 40px rgba(0, 0, 0, 0.34),
-            inset 0 0 18px rgba(255, 166, 0, 0.035);
-        }
-
-        .miniCard {
-          padding: 22px;
-        }
-
-        .miniLabel {
-          display: block;
-          margin-bottom: 8px;
-          font-size: 14px;
-          font-weight: 1000;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          color: #f5cf72;
-        }
-
-        .miniCard strong {
-          display: block;
-          color: #fff;
-          font-size: 24px;
-          line-height: 1.1;
-        }
-
-        .mainCard {
-          padding: 28px;
-          overflow: hidden;
-        }
-
-        .panelGlow {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          background:
-            radial-gradient(circle at top left, rgba(255, 196, 60, 0.035), transparent 20%),
-            radial-gradient(circle at bottom right, rgba(0, 136, 255, 0.03), transparent 24%);
-        }
-
-        .pill,
-        .ejerciciosRow,
-        .formGrid,
-        .resumeBox,
-        .actions {
-          position: relative;
-          z-index: 1;
-        }
-
-        .pill {
-          display: inline-flex;
-          width: fit-content;
-          padding: 8px 14px;
-          border-radius: 999px;
-          background: rgba(70, 46, 10, 0.34);
-          border: 1px solid rgba(255, 196, 60, 0.18);
-          color: #f5d27c;
-          font-size: 12px;
-          font-weight: 900;
-          letter-spacing: 0.22em;
-          margin-bottom: 16px;
-        }
-
-        .ejerciciosRow {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          margin-bottom: 20px;
-        }
-
-        .chip {
-          min-height: 48px;
-          padding: 0 18px;
-          border-radius: 999px;
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          background: rgba(255, 255, 255, 0.06);
-          color: #fff;
-          font-weight: 900;
-          cursor: pointer;
-        }
-
-        .chipActive {
-          background: linear-gradient(180deg, #ffb800 0%, #e39b00 100%);
-          color: #111;
-          border-color: transparent;
-        }
-
-        .formGrid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-        }
-
-        .field {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .field.full {
-          grid-column: 1 / -1;
-        }
-
-        .field label {
-          font-size: 16px;
-          font-weight: 900;
-          color: #fff;
-        }
-
-        .field input,
-        .field select {
-          width: 100%;
-          min-height: 56px;
-          border-radius: 18px;
-          border: 1px solid rgba(255, 190, 60, 0.14);
-          background: rgba(0, 0, 0, 0.42);
-          color: #fff;
-          padding: 0 18px;
-          outline: none;
-        }
-
-        .resumeBox {
-          margin-top: 18px;
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 12px;
-          padding: 16px;
-          border-radius: 20px;
-          background: rgba(0, 0, 0, 0.22);
-          border: 1px solid rgba(255, 190, 60, 0.1);
-        }
-
-        .resumeBox span {
-          display: block;
-          font-size: 12px;
-          color: #f5cf72;
-          margin-bottom: 6px;
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-          font-weight: 900;
-        }
-
-        .resumeBox strong {
-          color: #fff;
-          font-size: 18px;
-        }
-
-        .actions {
-          margin-top: 18px;
-        }
-
-        .primaryBtn {
-          width: 100%;
-          min-height: 58px;
-          border-radius: 18px;
-          border: none;
-          background: linear-gradient(180deg, #f7d979 0%, #dfa826 100%);
-          color: #111;
-          font-size: 18px;
-          font-weight: 1000;
-          cursor: pointer;
-        }
-
-        .primaryBtn:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
-        }
-
-        @media (max-width: 760px) {
-          .hero {
-            grid-template-columns: 1fr;
-          }
-
-          .hero h1 {
-            text-align: left;
-          }
-
-          .topGrid,
-          .formGrid,
-          .resumeBox {
-            grid-template-columns: 1fr;
-          }
-        }
-      `}</style>
+          {athletes.length > 0 && resultado === "nulo" && (
+            <span style={{ color: "#ff2d2d" }}>❌ NULO</span>
+          )}
+        </div>
+      </div>
     </main>
   );
 }
+
+const label: React.CSSProperties = {
+  display: "block",
+  marginTop: "12px",
+  marginBottom: "6px",
+  fontWeight: 800,
+  fontSize: "1rem",
+};
+
+const input: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 16px",
+  borderRadius: "14px",
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "rgba(255,255,255,0.05)",
+  color: "white",
+  marginBottom: "8px",
+  fontSize: "1rem",
+  outline: "none",
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+};
+
+const btnValido: React.CSSProperties = {
+  flex: 1,
+  background: "#0aa000",
+  padding: "16px",
+  borderRadius: "14px",
+  fontWeight: 900,
+  color: "white",
+  border: "none",
+  cursor: "pointer",
+  fontSize: "1rem",
+};
+
+const btnNulo: React.CSSProperties = {
+  flex: 1,
+  background: "#ff1a0a",
+  padding: "16px",
+  borderRadius: "14px",
+  fontWeight: 900,
+  color: "white",
+  border: "none",
+  cursor: "pointer",
+  fontSize: "1rem",
+};
+
+const resultadoBox: React.CSSProperties = {
+  marginTop: "26px",
+  textAlign: "center",
+  fontSize: "2rem",
+  fontWeight: 900,
+};
+
+const infoCard: React.CSSProperties = {
+  borderRadius: "18px",
+  padding: "16px",
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,180,0,0.14)",
+};
+
+const infoLabel: React.CSSProperties = {
+  fontSize: "0.9rem",
+  fontWeight: 800,
+  color: "#f6cf69",
+  marginBottom: "8px",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const infoValue: React.CSSProperties = {
+  fontSize: "1.1rem",
+  fontWeight: 800,
+  color: "#fff",
+};
+
+const miniLabel: React.CSSProperties = {
+  fontSize: "0.9rem",
+  fontWeight: 800,
+  color: "#f6cf69",
+  marginBottom: "8px",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const miniValue: React.CSSProperties = {
+  fontSize: "1rem",
+  fontWeight: 800,
+  color: "#fff",
+};
